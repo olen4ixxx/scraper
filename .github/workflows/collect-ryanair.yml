@@ -37,7 +37,10 @@ jobs:
           SPRING_DATASOURCE_USERNAME: ${{ secrets.DB_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          ./gradlew :app:bootRun --no-daemon > app-run.log 2>&1 &
+          # Process substitution (not a plain pipe) so $! below still captures
+          # gradlew's own PID, not tee's - a plain "cmd | tee file &" would
+          # make $! point at tee instead, breaking the kill/wait calls later.
+          ./gradlew :app:bootRun --no-daemon > >(tee app-run.log) 2>&1 &
           APP_PID=$!
 
           echo "Waiting for app to start..."
