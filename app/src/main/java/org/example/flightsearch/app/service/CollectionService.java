@@ -36,11 +36,13 @@ public class CollectionService {
     private static final int ROUTE_CONCURRENCY = 8;
     // A route with any price collected more recently than this is skipped - what makes a
     // long run interruptible: stop it anytime, run collection again and it only fetches
-    // what's missing or stale instead of starting over from scratch. Matches the GitHub
-    // Actions schedule (07/12/17/22 CEST - 5h apart, except the 9h overnight gap) - if
-    // this were longer than 5h, back-to-back runs would skip everything as "already
-    // fresh" and collect nothing new.
-    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(5);
+    // what's missing or stale instead of starting over from scratch. Kept well under the
+    // 5h minimum gap between scheduled runs (07/12/17/22 CEST), not equal to it - a run
+    // doesn't collect every route at exactly its start time (boot + discovery + queueing
+    // delay each route's actual collection by minutes), and GitHub's own cron trigger can
+    // fire a few minutes late too. Without this margin, routes collected slightly late in
+    // one run would still read as "fresh" 5h later and get skipped for a full extra cycle.
+    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(4);
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
