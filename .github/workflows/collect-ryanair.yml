@@ -2,10 +2,10 @@ name: Ryanair data collection
 
 on:
   schedule:
-    # 03:00 UTC daily - clear of the app's own in-process 2 AM UTC scheduler
-    # (SchedulerConfig), which only fires if the app happens to still be
-    # running at that time; this job starts, collects, and stops well before.
-    - cron: '0 3 * * *'
+    # Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC) - matches
+    # CollectionService.FRESHNESS_WINDOW, so each run actually has newly-stale
+    # routes to collect instead of skipping everything as still fresh.
+    - cron: '0 */6 * * *'
   workflow_dispatch: {}
 
 jobs:

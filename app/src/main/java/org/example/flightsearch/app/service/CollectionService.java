@@ -35,9 +35,11 @@ public class CollectionService {
     private static final Logger logger = LoggerFactory.getLogger(CollectionService.class);
     private static final int ROUTE_CONCURRENCY = 8;
     // A route with any price collected more recently than this is skipped - what makes a
-    // long run interruptible: stop it anytime, run collection again (even the next day) and
-    // it only fetches what's missing or stale instead of starting over from scratch.
-    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(24);
+    // long run interruptible: stop it anytime, run collection again and it only fetches
+    // what's missing or stale instead of starting over from scratch. Matches the GitHub
+    // Actions schedule (every 6h) - if this were still 24h, three out of every four
+    // scheduled runs would just skip everything as "already fresh" and collect nothing new.
+    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(6);
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
