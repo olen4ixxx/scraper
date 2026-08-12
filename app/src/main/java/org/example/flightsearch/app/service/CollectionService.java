@@ -37,9 +37,10 @@ public class CollectionService {
     // A route with any price collected more recently than this is skipped - what makes a
     // long run interruptible: stop it anytime, run collection again and it only fetches
     // what's missing or stale instead of starting over from scratch. Matches the GitHub
-    // Actions schedule (every 6h) - if this were still 24h, three out of every four
-    // scheduled runs would just skip everything as "already fresh" and collect nothing new.
-    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(6);
+    // Actions schedule (07/12/17/22 CEST - 5h apart, except the 9h overnight gap) - if
+    // this were longer than 5h, back-to-back runs would skip everything as "already
+    // fresh" and collect nothing new.
+    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(5);
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
