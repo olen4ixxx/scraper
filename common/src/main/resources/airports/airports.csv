@@ -1,0 +1,143 @@
+iata,name,city,country,lat,lon
+WAW,Warsaw Chopin Airport,Warsaw,Poland,52.1657,20.9671
+WMI,Warsaw Modlin Airport,Nowy Dwor Mazowiecki,Poland,52.4511,20.6518
+LTN,London Luton Airport,London,United Kingdom,51.8747,-0.3683
+BRS,Bristol Airport,Bristol,United Kingdom,51.3827,-2.7191
+BOH,Bournemouth Airport,Bournemouth,United Kingdom,50.7800,-1.8425
+LGW,London Gatwick Airport,London,United Kingdom,51.1537,-0.1821
+STN,London Stansted Airport,London,United Kingdom,51.8860,0.2389
+MAN,Manchester Airport,Manchester,United Kingdom,53.3537,-2.2750
+LPL,Liverpool John Lennon Airport,Liverpool,United Kingdom,53.3336,-2.8497
+BHX,Birmingham Airport,Birmingham,United Kingdom,52.4539,-1.7480
+EMA,East Midlands Airport,Castle Donington,United Kingdom,52.8311,-1.3281
+EDI,Edinburgh Airport,Edinburgh,United Kingdom,55.9500,-3.3725
+BUD,Budapest Ferenc Liszt International Airport,Budapest,Hungary,47.4298,19.2611
+OTP,Bucharest Henri Coanda International Airport,Bucharest,Romania,44.5711,26.0850
+CLJ,Cluj-Napoca International Airport,Cluj-Napoca,Romania,46.7852,23.6862
+TSR,Timisoara Traian Vuia International Airport,Timisoara,Romania,45.8098,21.3379
+SOF,Sofia Airport,Sofia,Bulgaria,42.6952,23.4062
+TLV,Ben Gurion Airport,Tel Aviv,Israel,32.0114,34.8867
+AMM,Queen Alia International Airport,Amman,Jordan,31.7226,35.9932
+DXB,Dubai International Airport,Dubai,United Arab Emirates,25.2532,55.3657
+AUH,Abu Dhabi International Airport,Abu Dhabi,United Arab Emirates,24.4330,54.6511
+DOH,Hamad International Airport,Doha,Qatar,25.2731,51.6081
+BCN,Barcelona-El Prat Airport,Barcelona,Spain,41.2971,2.0785
+VLC,Valencia Airport,Valencia,Spain,39.4893,-0.4816
+AGP,Malaga-Costa del Sol Airport,Malaga,Spain,36.6749,-4.4991
+ALC,Alicante-Elche Airport,Alicante,Spain,38.2822,-0.5582
+PMI,Palma de Mallorca Airport,Palma de Mallorca,Spain,39.5517,2.7388
+MLA,Malta International Airport,Luqa,Malta,35.8575,14.4775
+FCO,Rome Fiumicino Airport,Rome,Italy,41.8003,12.2389
+CIA,Rome Ciampino Airport,Rome,Italy,41.7994,12.5949
+MXP,Milan Malpensa Airport,Milan,Italy,45.6306,8.7281
+LIN,Milan Linate Airport,Milan,Italy,45.4451,9.2767
+BGO,Bergen Airport Flesland,Bergen,Norway,60.2934,5.2181
+OSL,Oslo Gardermoen Airport,Oslo,Norway,60.1976,11.1004
+TRD,Trondheim Airport Vaernes,Trondheim,Norway,63.4578,10.9240
+AAL,Aalborg Airport,Aalborg,Denmark,57.0928,9.8492
+CPH,Copenhagen Airport,Copenhagen,Denmark,55.6180,12.6560
+KEF,Keflavik International Airport,Reykjavik,Iceland,63.9850,-22.6056
+RIX,Riga International Airport,Riga,Latvia,56.9236,23.9711
+TLL,Tallinn Airport,Tallinn,Estonia,59.4133,24.8328
+VNO,Vilnius Airport,Vilnius,Lithuania,54.6341,25.2858
+KUN,Kaunas Airport,Kaunas,Lithuania,54.9639,24.0848
+KIV,Chisinau International Airport,Chisinau,Moldova,46.9277,28.9309
+TIA,Tirana International Airport Nene Tereza,Tirana,Albania,41.4147,19.7206
+PRN,Pristina International Airport,Pristina,Kosovo,42.5728,21.0361
+SKP,Skopje International Airport,Skopje,North Macedonia,41.9616,21.6214
+SPU,Split Airport,Split,Croatia,43.5389,16.2981
+ZAG,Zagreb Airport,Zagreb,Croatia,45.7429,16.0688
+LJU,Ljubljana Joze Pucnik Airport,Ljubljana,Slovenia,46.2237,14.4576
+BEG,Belgrade Nikola Tesla Airport,Belgrade,Serbia,44.8184,20.3091
+SJJ,Sarajevo International Airport,Sarajevo,Bosnia and Herzegovina,43.8246,18.3315
+TIV,Tivat Airport,Tivat,Montenegro,42.4047,18.7233
+POZ,Poznan-Lawica Airport,Poznan,Poland,52.4210,16.8263
+GDN,Gdansk Lech Walesa Airport,Gdansk,Poland,54.3776,18.4662
+WRO,Wroclaw Copernicus Airport,Wroclaw,Poland,51.1027,16.8858
+KRK,Krakow John Paul II International Airport,Krakow,Poland,50.0777,19.7848
+KTW,Katowice Airport,Katowice,Poland,50.4743,19.0800
+RZE,Rzeszow-Jasionka Airport,Rzeszow,Poland,50.1100,22.0190
+LUZ,Lublin Airport,Lublin,Poland,51.2403,22.7136
+IEV,Kyiv Zhuliany International Airport,Kyiv,Ukraine,50.4019,30.4519
+KBP,Boryspil International Airport,Kyiv,Ukraine,50.3450,30.8947
+ODS,Odesa International Airport,Odesa,Ukraine,46.4268,30.6765
+DUB,Dublin Airport,Dublin,Ireland,53.4213,-6.2701
+BVA,Paris Beauvais Airport,Paris,France,49.4544,2.1128
+OPO,Francisco Sa Carneiro Airport,Porto,Portugal,41.2481,-8.6814
+LIS,Humberto Delgado Airport,Lisbon,Portugal,38.7813,-9.1359
+ATH,Athens International Airport,Athens,Greece,37.9364,23.9445
+CRL,Brussels South Charleroi Airport,Charleroi,Belgium,50.4592,4.4525
+HHN,Frankfurt-Hahn Airport,Hahn,Germany,49.9487,7.2639
+AHO,Alghero,Alghero,Italy,40.6321,8.29077
+ARN,Stockholm Arlanda,Stockholm,Sweden,59.6498,17.9239
+BGY,Milan Bergamo,Bergamo,Italy,45.6739,9.70417
+BLQ,Bologna,Bologna,Italy,44.5354,11.2887
+BOJ,Burgas,Burgas,Bulgaria,42.301,27.2812
+BRI,Bari,Bari,Italy,41.1389,16.7606
+BTS,Bratislava,Bratislava,Slovakia,48.1702,17.2127
+CFU,Corfu,Corfu,Greece,39.6019,19.9117
+CHQ,Chania,Chania,Greece,35.5317,24.1497
+CTA,Catania,Catania,Italy,37.4668,15.0664
+EIN,Eindhoven,Eindhoven,Netherlands,51.4501,5.37453
+FAO,Faro,Faro,Portugal,37.0144,-7.96591
+GLA,Glasgow,Glasgow,United Kingdom,55.87194,-4.43306
+HEL,Helsinki,Helsinki,Finland,60.3172,24.9633
+LBA,Leeds Bradford,Leeds,United Kingdom,53.8659,-1.66057
+MAD,Madrid,Madrid,Spain,40.4722,-3.5608
+MMX,Malmo,Malmo,Sweden,55.5363,13.3762
+NAP,Naples,Naples,Italy,40.8844,14.2908
+PFO,Paphos,Paphos,Cyprus,34.718,32.4857
+PMO,Palermo,Palermo,Italy,38.176,13.091
+PSA,Pisa,Pisa,Italy,43.6839,10.3927
+RHO,Rhodes,Rhodes,Greece,36.4054,28.0862
+SKG,Thessaloniki,Thessaloniki,Greece,40.5197,22.9709
+SNN,Shannon,Shannon,Ireland,52.702,-8.92482
+SUF,Lamezia,Lamezia,Italy,38.9054,16.2423
+SVQ,Seville,Seville,Spain,37.418,-5.89311
+TFS,Tenerife South,Tenerife,Spain,28.0445,-16.5725
+TRN,Turin,Turin,Italy,45.2008,7.64963
+TSF,Venice Treviso,Venice,Italy,45.6484,12.1944
+VCE,Venice M.Polo,Venice,Italy,45.5053,12.3519
+VIE,Vienna,Vienna,Austria,48.123,16.2221
+ZAD,Zadar,Zadar,Croatia,44.1083,15.3467
+ZTH,Zakynthos,Zakynthos,Greece,37.7509,20.8843
+AAR,Aarhus,Aarhus,Denmark,56.3,10.619
+ABZ,Aberdeen,Aberdeen,United Kingdom,57.2019,-2.19778
+AGA,Agadir,Agadir,Morocco,30.325,-9.41307
+AOI,Ancona,Ancona,Italy,43.6163,13.3623
+BBU,Bucharest Baneasa ,Bucharest,Romania,44.502164658,26.102166258
+BDS,Brindisi,Brindisi,Italy,40.6576,17.947
+BFS,Belfast International,Belfast,United Kingdom,54.6575,-6.2158
+CAG,Cagliari,Cagliari,Italy,39.2515,9.05428
+CDT,Castellon (Valencia),Castellon,Spain,39.999,0.026
+DBV,Dubrovnik,Dubrovnik,Croatia,42.5614,18.2683
+FMM,Memmingen,Memmingen,Germany,47.9888,10.2395
+FUE,Fuerteventura,Fuerteventura,Spain,28.4527,-13.8638
+GOT,Göteborg Landvetter,Gothenburg,Sweden,57.6741,12.2925
+GRO,Barcelona Girona,Girona,Spain,41.901,2.76055
+HAM,Hamburg,Hamburg,Germany,53.63028,9.99111
+JTR,Santorini,Santorini,Greece,36.3992,25.4793
+LDE,Lourdes–Pyrenees,Lourdes,France,43.1787,-0.006439
+LPA,Gran Canaria,Gran Canaria,Spain,27.9319,-15.3866
+MRS,Marseille,Marseille,France,43.4393,5.22142
+NCL,Newcastle,Newcastle,United Kingdom,55.0375,-1.69167
+OLB,Olbia,Olbia,Italy,40.8987,9.51763
+PEG,Perugia,Perugia,Italy,43.0959,12.5132
+PRG,Prague,Prague,Czech Republic,50.1008,14.26
+PSR,Pescara,Pescara,Italy,42.4317,14.1811
+PUY,Pula,Pula,Croatia,44.8935,13.9222
+RAK,Marrakesh,Marrakesh,Morocco,31.6069,-8.0363
+RBA,Rabat,Rabat,Morocco,34.0515,-6.75152
+REG,Reggio Calabria,Reggio Calabria,Italy,38.0641,15.3943
+RJK,Rijeka,Rijeka,Croatia,45.2169,14.5703
+RMI,Rimini,Rimini,Italy,44.0203,12.6117
+SFT,Skelleftea,Skelleftea,Sweden,64.6248,21.0769
+SZZ,Szczecin,Szczecin,Poland,53.5847,14.9022
+TGD,Podgorica,Podgorica,Montenegro,42.3594,19.2519
+TLS,Toulouse,Toulouse,France,43.3616,1.2638
+TPS,Trapani-Marsala,Trapani,Italy,37.9114,12.488
+TRF,Oslo Torp,Sandefjord,Norway,59.1867,10.2586
+TRS,Trieste,Trieste,Italy,45.8275,13.4722
+VAR,Varna,Varna,Bulgaria,43.13,27.55
+VXO,Växjö Småland,Växjö,Sweden,56.9291,14.728
+BZG,Bydgoszcz,Bydgoszcz,Poland,53.0968,17.9777

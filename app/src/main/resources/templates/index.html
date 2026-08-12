@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Search</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-align: center;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .label-row label {
+            margin-bottom: 8px;
+        }
+
+        .clear-all-btn {
+            background: none;
+            border: none;
+            color: #667eea;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 0;
+            margin-bottom: 8px;
+        }
+
+        .clear-all-btn:hover {
+            text-decoration: underline;
+        }
+        
+        select, input[type="date"], input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .row {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .row .form-group {
+            flex: 1;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .checkbox-group label {
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+        
+        .airline-checkboxes {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        
+        .search-button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+        
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .search-button:active {
+            transform: translateY(0);
+        }
+
+        .combo-wrapper {
+            position: relative;
+        }
+
+        .suggestions {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 320px;
+            overflow-y: auto;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+        }
+
+        .suggestions.open {
+            display: block;
+        }
+
+        .suggestion-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 15px;
+            color: #333;
+        }
+
+        .suggestion-item:hover, .suggestion-item.active {
+            background: #f0f0fb;
+        }
+
+        .suggestion-anywhere {
+            font-weight: 600;
+        }
+
+        .suggestion-country {
+            font-weight: 700;
+            color: #667eea;
+            background: #f7f7fc;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .suggestion-city {
+            padding-left: 28px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .suggestion-airport {
+            padding-left: 44px;
+        }
+
+        .suggestion-empty {
+            padding: 15px;
+            color: #999;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #eef0fd;
+            color: #444;
+            border-radius: 20px;
+            padding: 6px 8px 6px 14px;
+            font-size: 14px;
+        }
+
+        .chip-label {
+            white-space: nowrap;
+        }
+
+        .chip-nearby-btn, .chip-remove {
+            width: 20px;
+            height: 20px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(102, 126, 234, 0.15);
+            color: #667eea;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chip-nearby-btn:hover, .chip-remove:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .nearby-panel {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .nearby-panel-title {
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #667eea;
+            background: #f7f7fc;
+        }
+
+        .nearby-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .nearby-item:hover {
+            background: #f0f0fb;
+        }
+
+        .nearby-item .distance {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .nearby-empty {
+            padding: 10px 12px;
+            color: #999;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✈ Flight Search</h1>
+        
+        <form action="/results" method="get">
+            <div class="form-group">
+                <label for="from">From</label>
+                <select id="from" name="from" required>
+                    <option value="POLAND">Poland (all airports)</option>
+                    <optgroup label="Poland">
+                        <option value="WARSAW">Warsaw (WAW + WMI)</option>
+                        <option value="WAW">Warsaw Chopin (WAW)</option>
+                        <option value="WMI">Warsaw Modlin (WMI)</option>
+                        <option value="KRK">Krakow (KRK)</option>
+                        <option value="GDN">Gdansk (GDN)</option>
+                        <option value="WRO">Wroclaw (WRO)</option>
+                        <option value="POZ">Poznan (POZ)</option>
+                        <option value="KTW">Katowice (KTW)</option>
+                        <option value="RZE">Rzeszow (RZE)</option>
+                        <option value="LUZ">Lublin (LUZ)</option>
+                        <option value="SZZ">Szczecin (SZZ)</option>
+                        <option value="BZG">Bydgoszcz (BZG)</option>
+                    </optgroup>
+                </select>
+            </div>
+            
+            <div class="form-group combo-wrapper">
+                <div class="label-row">
+                    <label for="toSearch">To</label>
+                    <button type="button" id="toClearAll" class="clear-all-btn" style="display:none;">Clear all</button>
+                </div>
+                <div class="chips" id="toChips"></div>
+                <div class="nearby-panel" id="nearbyPanel" style="display:none;"></div>
+                <input type="text" id="toSearch" autocomplete="off" placeholder="Add city, airport code or country...">
+                <input type="hidden" id="to" name="to" required>
+                <div id="toSuggestions" class="suggestions"></div>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label for="departure">Departure</label>
+                    <input type="date" id="departure" name="departure" required>
+                </div>
+                <div class="form-group">
+                    <label for="departureRangeEnd">...through (optional range)</label>
+                    <input type="date" id="departureRangeEnd" name="departureRangeEnd">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="form-group">
+                    <label for="returnDate">Return (optional)</label>
+                    <input type="date" id="returnDate" name="returnDate">
+                </div>
+                <div class="form-group">
+                    <label for="returnRangeEnd">...through (optional range)</label>
+                    <input type="date" id="returnRangeEnd" name="returnRangeEnd">
+                </div>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="directOnly" name="directOnly">
+                <label for="directOnly">Direct flights only</label>
+            </div>
+            
+            <div class="form-group">
+                <label for="maxStops">Maximum stops</label>
+                <select id="maxStops" name="maxStops">
+                    <option value="0">Direct only</option>
+                    <option value="1" selected>1 stop</option>
+                    <option value="2">2 stops</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Airlines</label>
+                <div class="airline-checkboxes">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ryanair" name="airlines" value="RYANAIR" checked>
+                        <label for="ryanair">Ryanair</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="wizzair" name="airlines" value="WIZZAIR" checked>
+                        <label for="wizzair">Wizz Air</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="sortBy">Sort by</label>
+                <select id="sortBy" name="sortBy">
+                    <option value="CHEAPEST" selected>Cheapest</option>
+                    <option value="SHORTEST">Shortest</option>
+                    <option value="EARLIEST_DEPARTURE">Earliest departure</option>
+                    <option value="LATEST_DEPARTURE">Latest departure</option>
+                    <option value="FEWEST_STOPS">Fewest stops</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="search-button">SEARCH FLIGHTS</button>
+        </form>
+    </div>
+    
+    <script th:inline="javascript">
+        const DESTINATIONS = /*[[${destinations}]]*/ [];
+        const PREFILL = {
+            from: /*[[${prefillFrom}]]*/ null,
+            to: /*[[${prefillTo}]]*/ null,
+            departure: /*[[${prefillDeparture}]]*/ null,
+            departureRangeEnd: /*[[${prefillDepartureRangeEnd}]]*/ null,
+            returnDate: /*[[${prefillReturnDate}]]*/ null,
+            returnRangeEnd: /*[[${prefillReturnRangeEnd}]]*/ null,
+            directOnly: /*[[${prefillDirectOnly}]]*/ false,
+            maxStops: /*[[${prefillMaxStops}]]*/ null,
+            airlines: /*[[${prefillAirlines}]]*/ null,
+            sortBy: /*[[${prefillSortBy}]]*/ null
+        };
+    </script>
+    <script>
+    (function() {
+        const searchInput = document.getElementById('toSearch');
+        const hiddenInput = document.getElementById('to');
+        const suggestionsBox = document.getElementById('toSuggestions');
+        const chipsBox = document.getElementById('toChips');
+        const nearbyPanel = document.getElementById('nearbyPanel');
+        const clearAllBtn = document.getElementById('toClearAll');
+
+        const byCountry = {};
+        DESTINATIONS.forEach(function(a) {
+            if (!byCountry[a.country]) byCountry[a.country] = [];
+            byCountry[a.country].push(a);
+        });
+        const countries = Object.keys(byCountry).sort();
+
+        let selected = [];
+        let nearbyOpenFor = null;
+
+        function haversineKm(lat1, lon1, lat2, lon2) {
+            const r = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function hideNearbyPanel() {
+            nearbyOpenFor = null;
+            nearbyPanel.style.display = 'none';
+            nearbyPanel.innerHTML = '';
+        }
+
+        function showNearby(iata) {
+            const target = DESTINATIONS.find(function(a) { return a.iata === iata; });
+            if (!target) return;
+
+            const selectedValues = selected.map(function(s) { return s.value; });
+            const nearby = DESTINATIONS
+                .filter(function(a) { return a.iata !== iata && selectedValues.indexOf(a.iata) === -1; })
+                .map(function(a) { return { airport: a, distance: haversineKm(target.lat, target.lon, a.lat, a.lon) }; })
+                .sort(function(x, y) { return x.distance - y.distance; })
+                .slice(0, 10);
+
+            nearbyPanel.innerHTML = '';
+            const title = document.createElement('div');
+            title.className = 'nearby-panel-title';
+            title.textContent = 'Airports near ' + target.city + ', in order of distance';
+            nearbyPanel.appendChild(title);
+
+            if (nearby.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'nearby-empty';
+                empty.textContent = 'No other collected airports nearby';
+                nearbyPanel.appendChild(empty);
+            } else {
+                nearby.forEach(function(n) {
+                    const item = document.createElement('div');
+                    item.className = 'nearby-item';
+
+                    const label = document.createElement('span');
+                    label.textContent = n.airport.city + ' (' + n.airport.iata + ')';
+
+                    const dist = document.createElement('span');
+                    dist.className = 'distance';
+                    dist.textContent = Math.round(n.distance) + ' km';
+
+                    item.appendChild(label);
+                    item.appendChild(dist);
+                    item.addEventListener('click', function() {
+                        addSelection(n.airport.city + ' (' + n.airport.iata + ')', n.airport.iata, 'airport');
+                        showNearby(iata);
+                    });
+                    nearbyPanel.appendChild(item);
+                });
+            }
+
+            nearbyPanel.style.display = 'block';
+            nearbyOpenFor = iata;
+        }
+
+        function toggleNearby(iata) {
+            if (nearbyOpenFor === iata) {
+                hideNearbyPanel();
+            } else {
+                showNearby(iata);
+            }
+        }
+
+        function renderChips() {
+            chipsBox.innerHTML = '';
+            selected.forEach(function(s) {
+                const chip = document.createElement('div');
+                chip.className = 'chip';
+
+                const label = document.createElement('span');
+                label.className = 'chip-label';
+                label.textContent = s.label;
+                chip.appendChild(label);
+
+                if (s.kind === 'airport') {
+                    const nearbyBtn = document.createElement('button');
+                    nearbyBtn.type = 'button';
+                    nearbyBtn.className = 'chip-nearby-btn';
+                    nearbyBtn.textContent = '+';
+                    nearbyBtn.title = 'Show nearby airports';
+                    nearbyBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        toggleNearby(s.value);
+                    });
+                    chip.appendChild(nearbyBtn);
+                } else if (s.kind === 'country' || s.kind === 'city') {
+                    const addMoreBtn = document.createElement('button');
+                    addMoreBtn.type = 'button';
+                    addMoreBtn.className = 'chip-nearby-btn';
+                    addMoreBtn.textContent = '+';
+                    addMoreBtn.title = 'Add another airport or country';
+                    addMoreBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        hideNearbyPanel();
+                        searchInput.focus();
+                        render(searchInput.value);
+                    });
+                    chip.appendChild(addMoreBtn);
+                }
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'chip-remove';
+                removeBtn.textContent = '×';
+                removeBtn.title = 'Remove';
+                removeBtn.addEventListener('click', function() {
+                    removeSelection(s.value);
+                });
+                chip.appendChild(removeBtn);
+
+                chipsBox.appendChild(chip);
+            });
+
+            hiddenInput.value = selected.map(function(s) { return s.value; }).join(',');
+            clearAllBtn.style.display = selected.length > 0 ? 'inline' : 'none';
+        }
+
+        function addSelection(label, value, kind) {
+            if (kind === 'anywhere') {
+                selected = [{ label: label, value: value, kind: kind }];
+            } else {
+                selected = selected.filter(function(s) { return s.kind !== 'anywhere' && s.value !== value; });
+                selected.push({ label: label, value: value, kind: kind });
+            }
+            searchInput.value = '';
+            suggestionsBox.classList.remove('open');
+            hideNearbyPanel();
+            renderChips();
+        }
+
+        function removeSelection(value) {
+            selected = selected.filter(function(s) { return s.value !== value; });
+            hideNearbyPanel();
+            renderChips();
+        }
+
+        function addSuggestionItem(label, value, kind, className) {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item' + (className ? ' ' + className : '');
+            item.textContent = label;
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                addSelection(label, value, kind);
+            });
+            suggestionsBox.appendChild(item);
+        }
+
+        function render(filter) {
+            const q = (filter || '').trim().toLowerCase();
+            suggestionsBox.innerHTML = '';
+            let anyMatch = false;
+
+            if (!q || 'anywhere'.indexOf(q) !== -1) {
+                addSuggestionItem('Anywhere', 'ANYWHERE', 'anywhere', 'suggestion-anywhere');
+                anyMatch = true;
+            }
+
+            countries.forEach(function(country) {
+                const airports = byCountry[country];
+                const countryMatches = country.toLowerCase().indexOf(q) !== -1;
+                const matchingAirports = airports.filter(function(a) {
+                    return countryMatches
+                        || a.city.toLowerCase().indexOf(q) !== -1
+                        || a.iata.toLowerCase().indexOf(q) !== -1
+                        || a.name.toLowerCase().indexOf(q) !== -1;
+                });
+
+                if (q && !countryMatches && matchingAirports.length === 0) {
+                    return;
+                }
+
+                const byCity = {};
+                airports.forEach(function(a) {
+                    if (!byCity[a.city]) byCity[a.city] = [];
+                    byCity[a.city].push(a);
+                });
+                const cityNames = Object.keys(byCity).sort();
+
+                let countryHeaderAdded = false;
+                cityNames.forEach(function(cityName) {
+                    const cityAirports = byCity[cityName];
+                    const cityMatches = countryMatches || cityName.toLowerCase().indexOf(q) !== -1;
+                    const shownAirports = cityAirports.filter(function(a) {
+                        return cityMatches
+                            || a.iata.toLowerCase().indexOf(q) !== -1
+                            || a.name.toLowerCase().indexOf(q) !== -1;
+                    });
+                    if (shownAirports.length === 0) return;
+
+                    if (!countryHeaderAdded) {
+                        anyMatch = true;
+                        addSuggestionItem('🌍 All of ' + country + ' (' + airports.length + ')', 'COUNTRY:' + country, 'country', 'suggestion-country');
+                        countryHeaderAdded = true;
+                    }
+
+                    if (cityAirports.length > 1) {
+                        addSuggestionItem(cityName + ' (All ' + cityAirports.length + ')', 'CITY:' + cityName, 'city', 'suggestion-city');
+                    }
+                    shownAirports.forEach(function(a) {
+                        addSuggestionItem(a.city + ' (' + a.iata + ')', a.iata, 'airport', 'suggestion-airport');
+                    });
+                });
+            });
+
+            if (!anyMatch) {
+                const empty = document.createElement('div');
+                empty.className = 'suggestion-empty';
+                empty.textContent = 'No matches';
+                suggestionsBox.appendChild(empty);
+            }
+
+            suggestionsBox.classList.add('open');
+        }
+
+        searchInput.addEventListener('focus', function() {
+            render(searchInput.value);
+        });
+        searchInput.addEventListener('input', function() {
+            render(searchInput.value);
+        });
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.combo-wrapper')) {
+                suggestionsBox.classList.remove('open');
+                hideNearbyPanel();
+            }
+        });
+
+        document.querySelector('form').addEventListener('submit', function(e) {
+            if (!hiddenInput.value) {
+                e.preventDefault();
+                searchInput.style.borderColor = '#e53935';
+                searchInput.focus();
+                render(searchInput.value);
+            }
+        });
+
+        clearAllBtn.addEventListener('click', function() {
+            selected = [];
+            hideNearbyPanel();
+            suggestionsBox.classList.remove('open');
+            renderChips();
+            searchInput.focus();
+        });
+
+        function tokenToSelection(token) {
+            const upper = token.toUpperCase();
+            if (upper === 'ANYWHERE') {
+                return { label: 'Anywhere', value: 'ANYWHERE', kind: 'anywhere' };
+            }
+            if (upper.indexOf('COUNTRY:') === 0) {
+                const name = token.substring(8);
+                return { label: '🌍 All of ' + name, value: 'COUNTRY:' + name, kind: 'country' };
+            }
+            if (upper.indexOf('CITY:') === 0) {
+                const name = token.substring(5);
+                return { label: name + ' (All)', value: 'CITY:' + name, kind: 'city' };
+            }
+            const airport = DESTINATIONS.find(function(a) { return a.iata === upper; });
+            return {
+                label: airport ? (airport.city + ' (' + airport.iata + ')') : upper,
+                value: upper,
+                kind: 'airport'
+            };
+        }
+
+        // Seed "To" from the previous search (arriving via "Back to search") if present,
+        // otherwise default to "Anywhere" like the old select's default first option did.
+        if (PREFILL.to) {
+            selected = PREFILL.to.split(',').map(function(t) { return t.trim(); })
+                .filter(function(t) { return t; })
+                .map(tokenToSelection);
+        }
+        if (selected.length === 0) {
+            selected = [{ label: 'Anywhere', value: 'ANYWHERE', kind: 'anywhere' }];
+        }
+        renderChips();
+
+        // Repopulate the rest of the form from the previous search, if any.
+        const today = new Date().toISOString().split('T')[0];
+        const fromEl = document.getElementById('from');
+        const departureEl = document.getElementById('departure');
+        const departureRangeEndEl = document.getElementById('departureRangeEnd');
+        const returnDateEl = document.getElementById('returnDate');
+        const returnRangeEndEl = document.getElementById('returnRangeEnd');
+        const directOnlyEl = document.getElementById('directOnly');
+        const maxStopsEl = document.getElementById('maxStops');
+        const sortByEl = document.getElementById('sortBy');
+        const ryanairEl = document.getElementById('ryanair');
+        const wizzairEl = document.getElementById('wizzair');
+
+        if (PREFILL.from) fromEl.value = PREFILL.from;
+        departureEl.value = PREFILL.departure || today;
+        departureEl.min = today;
+        if (PREFILL.departureRangeEnd) departureRangeEndEl.value = PREFILL.departureRangeEnd;
+        if (PREFILL.returnDate) returnDateEl.value = PREFILL.returnDate;
+        if (PREFILL.returnRangeEnd) returnRangeEndEl.value = PREFILL.returnRangeEnd;
+        directOnlyEl.checked = !!PREFILL.directOnly;
+        if (PREFILL.maxStops !== null && PREFILL.maxStops !== undefined) maxStopsEl.value = String(PREFILL.maxStops);
+        if (PREFILL.sortBy) sortByEl.value = PREFILL.sortBy;
+        if (PREFILL.airlines) {
+            ryanairEl.checked = PREFILL.airlines.indexOf('RYANAIR') !== -1;
+            wizzairEl.checked = PREFILL.airlines.indexOf('WIZZAIR') !== -1;
+        }
+
+        function syncMins() {
+            departureRangeEndEl.min = departureEl.value || today;
+            returnDateEl.min = departureEl.value || today;
+            returnRangeEndEl.min = returnDateEl.value || departureEl.value || today;
+        }
+        departureEl.addEventListener('change', syncMins);
+        returnDateEl.addEventListener('change', syncMins);
+        syncMins();
+    })();
+    </script>
+</body>
+</html>

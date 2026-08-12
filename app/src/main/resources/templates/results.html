@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Search Results</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .price {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .stops-badge {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .route {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .airlines {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .flight-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+        }
+        
+        .time {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .date {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .duration {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        
+        .details-button {
+            background: #f5f5f5;
+            color: #333;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        .details-button:hover {
+            background: #e0e0e0;
+        }
+        
+        .segments {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .segments.show {
+            display: block;
+        }
+        
+        .segment {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .segment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .segment-airline {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .segment-price {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .segment-route {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .segment-times {
+            display: flex;
+            justify-content: space-between;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .connection-time {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin: 10px 0;
+            font-style: italic;
+        }
+        
+        .self-transfer {
+            background: #fff3e0;
+            color: #e65100;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        .roundtrip-badge {
+            background: #e3e8fd;
+            color: #3949ab;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        .leg-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #667eea;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+
+        .leg-label:first-child {
+            margin-top: 0;
+        }
+        
+        .price-history {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed #e0e0e0;
+        }
+
+        .price-history-label {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .price-history-chart {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .price-history-chart svg {
+            display: block;
+        }
+
+        .price-history-range {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        .price-history-empty {
+            font-size: 12px;
+            color: #999;
+            font-style: italic;
+        }
+
+        .no-results {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .no-results h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .no-results p {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, directOnly=${qDirectOnly}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy})}" class="back-link">← Back to search</a>
+        
+        <div class="header">
+            <h1 th:text="${from} + ' → ' + ${to}">Warsaw → Anywhere</h1>
+            <p th:if="${returnDate == null}" th:text="'Departure: ' + ${departure}">Departure: 15 Sep 2026</p>
+            <p th:if="${returnDate != null}" th:text="'Departure: ' + ${departure} + ' · Return: ' + ${returnDate}">Departure: 15 Sep 2026 · Return: 20 Sep 2026</p>
+        </div>
+        
+        <div th:if="${results == null or results.empty}" class="no-results">
+            <h2>No flights found</h2>
+            <p>Try adjusting your search criteria or dates.</p>
+        </div>
+        
+        <div th:each="result : ${results}" class="result-card">
+            <div class="result-header">
+                <div>
+                    <div class="price" th:text="${#numbers.formatDecimal(result.totalPrice, 1, 2)} + ' ' + ${result.currency}">€19.99</div>
+                    <span class="stops-badge" th:text="${result.numberOfStops == 0 ? 'Direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Direct</span>
+                    <span th:if="${result.roundTrip}" class="roundtrip-badge">Round trip</span>
+                </div>
+            </div>
+
+            <div class="route" th:text="${result.segments[0].fromCity} + ' (' + ${result.segments[0].fromAirport} + ')' + ' → ' + ${result.segments[result.segments.size() - 1].toCity} + ' (' + ${result.segments[result.segments.size() - 1].toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
+            <div class="airlines" th:text="${#strings.listJoin(result.airlines, ' + ')}">Ryanair</div>
+
+            <div class="leg-label" th:if="${result.roundTrip}">Outbound</div>
+            <div class="flight-details">
+                <div>
+                    <div class="time" th:text="${#temporals.format(result.departure, 'HH:mm')}">06:20</div>
+                    <div class="date" th:text="${#temporals.format(result.departure, 'd MMM yyyy')}">15 Sep</div>
+                </div>
+
+                <div class="duration">
+                    <div th:text="${result.duration.toHours() + 'h ' + (result.duration.toMinutes() % 60) + 'm'}">1h 50m</div>
+                </div>
+
+                <div>
+                    <div class="time" th:text="${#temporals.format(result.arrival, 'HH:mm')}">08:10</div>
+                    <div class="date" th:text="${#temporals.format(result.arrival, 'd MMM yyyy')}">15 Sep</div>
+                </div>
+
+                <button th:if="${!result.roundTrip}" class="details-button" onclick="toggleDetails(this)">Details</button>
+            </div>
+
+            <div th:if="${result.roundTrip}">
+                <div class="leg-label">Return</div>
+                <div class="flight-details">
+                    <div>
+                        <div class="time" th:text="${#temporals.format(result.returnDeparture, 'HH:mm')}">18:20</div>
+                        <div class="date" th:text="${#temporals.format(result.returnDeparture, 'd MMM yyyy')}">20 Sep</div>
+                    </div>
+
+                    <div class="duration">
+                        <div th:text="${result.returnDuration.toHours() + 'h ' + (result.returnDuration.toMinutes() % 60) + 'm'}">1h 50m</div>
+                    </div>
+
+                    <div>
+                        <div class="time" th:text="${#temporals.format(result.returnArrival, 'HH:mm')}">20:10</div>
+                        <div class="date" th:text="${#temporals.format(result.returnArrival, 'd MMM yyyy')}">20 Sep</div>
+                    </div>
+
+                    <button class="details-button" onclick="toggleDetails(this)">Details</button>
+                </div>
+            </div>
+
+            <div class="segments">
+                <div class="leg-label" th:if="${result.roundTrip}">Outbound</div>
+                <div th:each="segment, stat : ${result.segments}" class="segment">
+                    <div class="segment-header">
+                        <span class="segment-airline" th:text="${segment.airline}">Ryanair</span>
+                        <span class="segment-price" th:text="${#numbers.formatDecimal(segment.price, 1, 2)} + ' ' + ${segment.currency}">€25.00</span>
+                    </div>
+                    <div class="segment-route" th:text="${segment.fromCity} + ' (' + ${segment.fromAirport} + ')' + ' → ' + ${segment.toCity} + ' (' + ${segment.toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
+                    <div class="segment-times">
+                        <span th:text="${#temporals.format(segment.departure, 'HH:mm')}">06:20</span>
+                        <span th:text="${#temporals.format(segment.arrival, 'HH:mm')}">08:10</span>
+                    </div>
+                    <div class="price-history" th:attr="data-flight-id=${segment.flightId}"></div>
+                </div>
+
+                <div th:if="${result.numberOfStops > 0}" class="self-transfer">
+                    ⚠ Self-transfer (not protected)
+                </div>
+
+                <div th:if="${result.roundTrip}">
+                    <div class="leg-label">Return</div>
+                    <div th:each="segment, stat : ${result.returnSegments}" class="segment">
+                        <div class="segment-header">
+                            <span class="segment-airline" th:text="${segment.airline}">Ryanair</span>
+                            <span class="segment-price" th:text="${#numbers.formatDecimal(segment.price, 1, 2)} + ' ' + ${segment.currency}">€25.00</span>
+                        </div>
+                        <div class="segment-route" th:text="${segment.fromCity} + ' (' + ${segment.fromAirport} + ')' + ' → ' + ${segment.toCity} + ' (' + ${segment.toAirport} + ')'">Milan (BGY) → Warsaw (WAW)</div>
+                        <div class="segment-times">
+                            <span th:text="${#temporals.format(segment.departure, 'HH:mm')}">18:20</span>
+                            <span th:text="${#temporals.format(segment.arrival, 'HH:mm')}">20:10</span>
+                        </div>
+                        <div class="price-history" th:attr="data-flight-id=${segment.flightId}"></div>
+                    </div>
+
+                    <div th:if="${result.returnNumberOfStops > 0}" class="self-transfer">
+                        ⚠ Self-transfer (not protected)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function toggleDetails(button) {
+            const card = button.closest('.result-card');
+            const segments = card.querySelector('.segments');
+            segments.classList.toggle('show');
+            button.textContent = segments.classList.contains('show') ? 'Hide' : 'Details';
+            if (segments.classList.contains('show')) {
+                segments.querySelectorAll('.price-history[data-flight-id]').forEach(loadPriceHistory);
+            }
+        }
+
+        function loadPriceHistory(container) {
+            const flightId = container.getAttribute('data-flight-id');
+            if (!flightId || flightId === 'null' || container.dataset.loaded) {
+                return;
+            }
+            container.dataset.loaded = '1';
+            fetch('/api/priceHistory?flightId=' + encodeURIComponent(flightId))
+                .then(function(r) { return r.json(); })
+                .then(function(points) { renderPriceHistory(container, points); })
+                .catch(function() { container.innerHTML = ''; });
+        }
+
+        function formatDate(iso) {
+            const d = new Date(iso);
+            return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        }
+
+        // Every price we've collected for this exact flight over time, as a small sparkline -
+        // "all prices we've seen for this specific flight" (azair-style price history).
+        function renderPriceHistory(container, points) {
+            if (!points || points.length === 0) {
+                container.innerHTML = '<div class="price-history-label">Price history</div>'
+                    + '<div class="price-history-empty">First time we\'ve checked this flight</div>';
+                return;
+            }
+            if (points.length === 1) {
+                container.innerHTML = '<div class="price-history-label">Price history</div>'
+                    + '<div class="price-history-empty">Only checked once so far (' + formatDate(points[0].collectedAt) + ')</div>';
+                return;
+            }
+
+            const prices = points.map(function(p) { return p.price; });
+            const min = Math.min.apply(null, prices);
+            const max = Math.max.apply(null, prices);
+            const w = 120, h = 32, pad = 3;
+
+            const coords = points.map(function(p, i) {
+                const x = pad + (i / (points.length - 1)) * (w - 2 * pad);
+                const y = max === min ? h / 2 : h - pad - ((p.price - min) / (max - min)) * (h - 2 * pad);
+                return x.toFixed(1) + ',' + y.toFixed(1);
+            });
+
+            const first = points[0];
+            const last = points[points.length - 1];
+            const trendColor = last.price > first.price ? '#e53935' : (last.price < first.price ? '#2e7d32' : '#999');
+
+            const svg = '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">'
+                + '<polyline points="' + coords.join(' ') + '" fill="none" stroke="' + trendColor
+                + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+            container.innerHTML = '<div class="price-history-label">Price history (' + points.length + ' checks)</div>'
+                + '<div class="price-history-chart">' + svg
+                + '<span class="price-history-range">' + Math.round(min) + '–' + Math.round(max) + ' ' + last.currency + '</span></div>';
+        }
+    </script>
+</body>
+</html>
