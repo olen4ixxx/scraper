@@ -34,10 +34,13 @@ public class SearchController {
         @RequestParam(defaultValue = "false") boolean directOnly,
         @RequestParam(defaultValue = "1") int maxStops,
         @RequestParam(required = false) Set<Airline> airlines,
-        @RequestParam(defaultValue = "CHEAPEST") SearchRequest.SortBy sortBy
+        @RequestParam(defaultValue = "CHEAPEST") SearchRequest.SortBy sortBy,
+        @RequestParam(required = false) Integer minConnectionMinutes,
+        @RequestParam(required = false) Integer maxConnectionMinutes
     ) {
         SearchRequest request = new SearchRequest(
-            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlines, sortBy
+            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlines, sortBy,
+            minConnectionMinutes, maxConnectionMinutes
         );
         return searchService.search(request);
     }

@@ -16,7 +16,9 @@ public record SearchRequest(
     boolean directOnly,
     int maxStops,
     Set<Airline> airlines,
-    SortBy sortBy
+    SortBy sortBy,
+    Integer minConnectionMinutes,
+    Integer maxConnectionMinutes
 ) {
     public enum SortBy {
         CHEAPEST,

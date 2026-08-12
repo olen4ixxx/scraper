@@ -58,6 +58,8 @@ public class WebController {
         @RequestParam(required = false) Integer maxStops,
         @RequestParam(required = false) List<String> airlines,
         @RequestParam(required = false) SearchRequest.SortBy sortBy,
+        @RequestParam(required = false) Integer minConnectionMinutes,
+        @RequestParam(required = false) Integer maxConnectionMinutes,
         Model model
     ) {
         model.addAttribute("destinations", airportRepository.findDestinationsFrom(PolandAirports.ALL));
@@ -76,6 +78,8 @@ public class WebController {
         model.addAttribute("prefillMaxStops", maxStops);
         model.addAttribute("prefillAirlines", airlines);
         model.addAttribute("prefillSortBy", sortBy != null ? sortBy.name() : null);
+        model.addAttribute("prefillMinConnectionMinutes", minConnectionMinutes);
+        model.addAttribute("prefillMaxConnectionMinutes", maxConnectionMinutes);
 
         return "index";
     }
@@ -92,6 +96,8 @@ public class WebController {
         @RequestParam(defaultValue = "1") int maxStops,
         @RequestParam(required = false) List<String> airlines,
         @RequestParam(defaultValue = "CHEAPEST") SearchRequest.SortBy sortBy,
+        @RequestParam(required = false) Integer minConnectionMinutes,
+        @RequestParam(required = false) Integer maxConnectionMinutes,
         Model model
     ) {
         Set<Airline> airlineSet = new HashSet<>();
@@ -106,7 +112,8 @@ public class WebController {
         }
 
         SearchRequest request = new SearchRequest(
-            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlineSet, sortBy
+            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlineSet, sortBy,
+            minConnectionMinutes, maxConnectionMinutes
         );
 
         List<SearchResult> results = searchService.search(request);
@@ -129,6 +136,8 @@ public class WebController {
         model.addAttribute("qMaxStops", maxStops);
         model.addAttribute("qAirlines", airlines);
         model.addAttribute("qSortBy", sortBy);
+        model.addAttribute("qMinConnectionMinutes", minConnectionMinutes);
+        model.addAttribute("qMaxConnectionMinutes", maxConnectionMinutes);
 
         return "results";
     }

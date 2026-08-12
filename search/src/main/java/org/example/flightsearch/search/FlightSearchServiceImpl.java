@@ -388,8 +388,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     // single search.
     private List<SearchResult> findOneStopFlights(String from, String to, Instant start, Instant end,
                                                     SearchRequest request, SearchContext ctx) {
-        Duration minConnectionTime = Duration.ofMinutes(minConnectionMinutes);
-        Duration maxConnectionTime = Duration.ofHours(maxConnectionHours);
+        Duration minConnectionTime = effectiveMinConnectionTime(request);
+        Duration maxConnectionTime = effectiveMaxConnectionTime(request);
 
         List<FlightWithPrice> fromFlights = flightRepository.findFlightsFrom(from, start, end);
         fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
@@ -428,8 +428,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
     private List<SearchResult> findOneStopFlightsAnywhere(String from, Instant start, Instant end,
                                                              SearchRequest request, SearchContext ctx) {
-        Duration minConnectionTime = Duration.ofMinutes(minConnectionMinutes);
-        Duration maxConnectionTime = Duration.ofHours(maxConnectionHours);
+        Duration minConnectionTime = effectiveMinConnectionTime(request);
+        Duration maxConnectionTime = effectiveMaxConnectionTime(request);
 
         List<FlightWithPrice> fromFlights = flightRepository.findFlightsFromAnyDestination(from, start, end);
         fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
@@ -469,6 +469,20 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
 
         return results;
+    }
+
+    // Falls back to the configured default (application.yml) when the user's search didn't
+    // specify a connection window - lets each search request override it (down to 30 minutes,
+    // or out to several days for airlines like WizzAir whose collected data only carries a
+    // placeholder time, not a real one) without changing the server-wide default.
+    private Duration effectiveMinConnectionTime(SearchRequest request) {
+        Integer minutes = request.minConnectionMinutes();
+        return Duration.ofMinutes(minutes != null ? minutes : minConnectionMinutes);
+    }
+
+    private Duration effectiveMaxConnectionTime(SearchRequest request) {
+        Integer minutes = request.maxConnectionMinutes();
+        return Duration.ofMinutes(minutes != null ? minutes : maxConnectionHours * 60L);
     }
 
     private boolean isWithin(Instant value, Instant from, Instant to) {
