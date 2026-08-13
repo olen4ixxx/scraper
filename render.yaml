@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: azair
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /
+    envVars:
+      # Read-only instance: it serves the site, while collection stays in the scheduled
+      # GitHub Actions run. Without this a public deployment would scrape on its own timer,
+      # from a second IP, and expose /collect to anyone who found the URL.
+      - key: COLLECTOR_ENABLED
+        value: false
+      # Set these in the Render dashboard - same Neon database the collector writes to.
+      # "sync: false" means Render asks for the value instead of it living in this file.
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false

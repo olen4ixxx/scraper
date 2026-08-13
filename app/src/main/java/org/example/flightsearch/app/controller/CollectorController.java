@@ -4,6 +4,7 @@ import org.example.flightsearch.app.service.CollectionService;
 import org.example.flightsearch.common.model.Airline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/collect")
+@ConditionalOnProperty(name = "collector.enabled", havingValue = "true", matchIfMissing = true)
 public class CollectorController {
     private static final Logger logger = LoggerFactory.getLogger(CollectorController.class);
     

@@ -2,6 +2,7 @@ package org.example.flightsearch.app.controller;
 
 import org.example.flightsearch.app.service.CollectionService;
 import org.example.flightsearch.common.model.Airline;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/collect")
+@ConditionalOnProperty(name = "collector.enabled", havingValue = "true", matchIfMissing = true)
 public class CollectController {
     
     private final CollectionService collectionService;

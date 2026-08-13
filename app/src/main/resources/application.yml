@@ -17,7 +17,8 @@ spring:
       mode: never
 
 server:
-  port: 8080
+  # Hosting platforms assign the port at runtime and expect the app to bind to it.
+  port: ${PORT:8080}
 
 logging:
   level:
@@ -30,6 +31,11 @@ flight:
     max-connection-hours: 12
 
 collector:
+  # Turn off wherever the app is only serving the site (a public deployment): it stops the
+  # nightly scheduled run and unregisters the /collect endpoints, so a browsable instance
+  # can't start scraping - on its own timer or because someone found the URL. Collection
+  # happens in the scheduled GitHub Actions run, which uses the default (enabled).
+  enabled: true
   days-ahead: 60
   max-concurrency: 2
   request-delay-ms: 1000
