@@ -130,7 +130,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             request.returnDate(), request.returnRangeEnd(), request.maxStops());
 
         SearchContext ctx = buildContext();
-        Set<String> fromAirports = resolveFromAirports(request.from());
+        Set<String> fromAirports = resolveAirports(request.from());
         boolean anywhere = isAnywhere(request.to());
         List<LocalDate> departureDates = dateRange(request.departure(), request.departureRangeEnd());
 
@@ -166,7 +166,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
     private List<SearchResult> searchOneWay(Set<String> fromAirports, boolean anywhere,
                                              List<LocalDate> departureDates, SearchRequest request, SearchContext ctx) {
-        Set<String> toAirports = anywhere ? Set.of() : resolveToAirports(request.to());
+        Set<String> toAirports = anywhere ? Set.of() : resolveAirports(request.to());
         return searchLegs(fromAirports, toAirports, rangeStart(departureDates), rangeEnd(departureDates), request, ctx);
     }
 
@@ -221,7 +221,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         Instant departureEnd = rangeEnd(departureDates);
         Instant returnStart = rangeStart(returnDates);
         Instant returnEnd = rangeEnd(returnDates);
-        Set<String> toAirports = anywhere ? Set.of() : resolveToAirports(request.to());
+        Set<String> toAirports = anywhere ? Set.of() : resolveAirports(request.to());
         boolean flexOrigin = request.allowReturnToDifferentAirport();
         boolean flexDestination = request.allowReturnFromDifferentAirport();
 
@@ -356,27 +356,6 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return dates;
     }
 
-    private Set<String> resolveFromAirports(String from) {
-        Set<String> result = new HashSet<>();
-        for (String rawToken : from.split(",")) {
-            String token = rawToken.trim();
-            if (token.isEmpty()) {
-                continue;
-            }
-            if (WARSAW.equalsIgnoreCase(token)) {
-                result.addAll(WARSAW_AIRPORTS);
-            } else if (POLAND.equalsIgnoreCase(token)) {
-                result.addAll(PolandAirports.ALL);
-            } else {
-                result.add(token.toUpperCase());
-            }
-        }
-        return result;
-    }
-
-    // "to" can carry several comma-separated tokens - individual airport codes, or
-    // "COUNTRY:x" / "CITY:x" for whole-country / whole-city (multi-airport) selections -
-    // built up client-side as the user adds chips to their search.
     private boolean isAnywhere(String to) {
         for (String token : to.split(",")) {
             if (ANYWHERE.equalsIgnoreCase(token.trim())) {
@@ -386,9 +365,15 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return false;
     }
 
-    private Set<String> resolveToAirports(String to) {
+    /**
+     * Turns either side of a search into the set of airports it covers. Both sides carry the
+     * same comma-separated tokens - an airport code, "COUNTRY:x" / "CITY:x" for a whole country
+     * or multi-airport city, or the "POLAND" / "WARSAW" shorthands - because the two sides can
+     * be swapped, and a country that reads as a destination has to read as an origin too.
+     */
+    private Set<String> resolveAirports(String places) {
         List<String> tokens = new ArrayList<>();
-        for (String rawToken : to.split(",")) {
+        for (String rawToken : places.split(",")) {
             String token = rawToken.trim();
             if (!token.isEmpty()) {
                 tokens.add(token);
@@ -406,6 +391,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         for (String token : tokens) {
             if (WARSAW.equalsIgnoreCase(token)) {
                 result.addAll(WARSAW_AIRPORTS);
+            } else if (POLAND.equalsIgnoreCase(token)) {
+                result.addAll(PolandAirports.ALL);
             } else if (token.regionMatches(true, 0, COUNTRY_PREFIX, 0, COUNTRY_PREFIX.length())) {
                 String country = token.substring(COUNTRY_PREFIX.length());
                 result.addAll(matching(destinations, a -> a.country().equalsIgnoreCase(country)));

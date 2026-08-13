@@ -344,7 +344,10 @@
         
         <form action="/results" method="get">
             <div class="form-group">
-                <label for="from">From</label>
+                <div class="label-row">
+                    <label for="from">From</label>
+                    <button type="button" id="swapFromTo" class="clear-all-btn" title="Swap From and To">⇄ Swap</button>
+                </div>
                 <select id="from" name="from" required>
                     <option value="POLAND">Poland (all airports)</option>
                     <optgroup label="Poland">
@@ -820,6 +823,14 @@
                 const name = token.substring(5);
                 return { label: name + ' (All)', value: 'CITY:' + name, kind: 'city' };
             }
+            // The two shorthands the "From" list offers - they mean the same on either side of
+            // a search, so they survive a swap instead of turning into unreadable chips.
+            if (upper === 'POLAND') {
+                return { label: '🌍 Poland (all airports)', value: 'POLAND', kind: 'country' };
+            }
+            if (upper === 'WARSAW') {
+                return { label: 'Warsaw (WAW + WMI)', value: 'WARSAW', kind: 'city' };
+            }
             const airport = DESTINATIONS.find(function(a) { return a.iata === upper; });
             return {
                 label: airport ? (airport.city + ' (' + airport.iata + ')') : upper,
@@ -852,7 +863,25 @@
         const ryanairEl = document.getElementById('ryanair');
         const wizzairEl = document.getElementById('wizzair');
 
-        if (PREFILL.from) fromEl.value = PREFILL.from;
+        // "From" is a fixed list of Polish airports, but the search itself accepts any
+        // comma-separated set of places on either side - so anything the list doesn't already
+        // offer (whatever was swapped in from "To", or carried back by "Back to search") gets
+        // its own option rather than being silently dropped.
+        function setFrom(value, label) {
+            const existing = Array.prototype.find.call(fromEl.options, function(o) { return o.value === value; });
+            if (!existing) {
+                const custom = document.getElementById('fromCustomOption') || document.createElement('option');
+                custom.id = 'fromCustomOption';
+                custom.value = value;
+                custom.textContent = label || value;
+                if (!custom.parentNode) fromEl.insertBefore(custom, fromEl.firstChild);
+            }
+            fromEl.value = value;
+        }
+
+        if (PREFILL.from) setFrom(PREFILL.from, PREFILL.from.split(',').map(function(t) {
+            return tokenToSelection(t.trim()).label;
+        }).join(', '));
         departureEl.value = PREFILL.departure || today;
         departureEl.min = today;
         if (PREFILL.departureRangeEnd) departureRangeEndEl.value = PREFILL.departureRangeEnd;
@@ -945,6 +974,32 @@
                 const maxM = parseInt(maxConnMinutesEl.value, 10) || 0;
                 maxConnectionMinutesHiddenEl.value = maxH * 60 + maxM;
             }
+        });
+
+        // Swaps the two sides of the search, which is the quick way to look for the journey
+        // home ("from anywhere in Italy back to Poland") instead of the journey out.
+        document.getElementById('swapFromTo').addEventListener('click', function() {
+            if (selected.length === 0) {
+                searchInput.focus();
+                return;
+            }
+            if (selected.some(function(s) { return s.kind === 'anywhere'; })) {
+                // "Anywhere" only means something as a destination - there's no set of airports
+                // to depart from that it could turn into.
+                alert('"Anywhere" can only be a destination, so this search can\'t be reversed.');
+                return;
+            }
+
+            const newFromValue = selected.map(function(s) { return s.value; }).join(',');
+            const newFromLabel = selected.map(function(s) { return s.label; }).join(', ');
+            const oldFrom = fromEl.value;
+
+            selected = oldFrom.split(',').map(function(t) { return t.trim(); })
+                .filter(function(t) { return t; })
+                .map(tokenToSelection);
+            renderChips();
+
+            setFrom(newFromValue, newFromLabel);
         });
 
         function syncMins() {
