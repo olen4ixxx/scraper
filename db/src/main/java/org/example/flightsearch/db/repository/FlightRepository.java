@@ -26,20 +26,29 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         @Param("departure") Instant departure
     );
     
-    // "ps.price >= 5" excludes the rare junk/sentinel prices some scrapers leave behind
+    // The LATERAL sub-select is how each flight's current price is found: walk that flight's
+    // snapshots newest-first (idx_price_snapshot_flight_latest) and take one. Matching on
+    // "collected_at = (SELECT MAX(...))" instead made the planner hash the entire
+    // price_snapshot table on every search - a sequential scan of ~650k rows to answer a
+    // question about ~2400 flights, and by far the slowest part of a search.
+    //
+    // "ps.price >= 5" then excludes the rare junk/sentinel prices some scrapers leave behind
     // (e.g. a promo-teaser price under 5 that never was a real bookable fare) - a real
-    // budget-airline one-way fare is never genuinely that cheap.
+    // budget-airline one-way fare is never genuinely that cheap. Applying it after the
+    // sub-select, not inside it, keeps the original meaning: a flight whose latest price is
+    // junk drops out, rather than falling back to some older price that passed the filter.
     @Query("""
         SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
         JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
+        CROSS JOIN LATERAL (
+            SELECT price, currency FROM price_snapshot
+            WHERE flight_id = f.id
+            ORDER BY collected_at DESC
+            LIMIT 1
+        ) ps
         WHERE r.from_airport IN (:fromAirports)
         AND f.departure >= :from AND f.departure <= :to
         AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
         ORDER BY f.departure ASC
         """)
     List<FlightWithPrice> findFlightsFromAnyDestinationFromAirports(
@@ -55,14 +64,15 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
     @Query("""
         SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
         JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
+        CROSS JOIN LATERAL (
+            SELECT price, currency FROM price_snapshot
+            WHERE flight_id = f.id
+            ORDER BY collected_at DESC
+            LIMIT 1
+        ) ps
         WHERE r.from_airport IN (:fromAirports) AND r.to_airport IN (:toAirports)
         AND f.departure >= :from AND f.departure <= :to
         AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
         ORDER BY ps.price ASC
         """)
     List<FlightWithPrice> findDirectFlightsBetweenAirports(
