@@ -1,7 +1,13 @@
 .git
-.gradle
 .idea
 .claude
+.gradle
+**/.gradle
 build
 **/build
 *.log
+
+# Not part of the server build - keeping them out also avoids the image rebuilding
+# (or failing on locked Gradle files) whenever the mobile side is being worked on.
+android
+mobile

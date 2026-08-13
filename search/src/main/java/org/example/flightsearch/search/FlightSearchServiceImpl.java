@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Service
@@ -155,18 +156,35 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     private List<SearchResult> searchOneWay(Set<String> fromAirports, boolean anywhere,
                                              List<LocalDate> departureDates, SearchRequest request, SearchContext ctx) {
         Set<String> toAirports = anywhere ? Set.of() : resolveToAirports(request.to());
-        Instant start = rangeStart(departureDates);
-        Instant end = rangeEnd(departureDates);
-        List<SearchResult> results = new ArrayList<>();
+        return searchLegs(fromAirports, toAirports, rangeStart(departureDates), rangeEnd(departureDates), request, ctx);
+    }
 
-        for (String from : fromAirports) {
-            if (anywhere) {
-                results.addAll(searchAnywhere(from, start, end, request, ctx));
-            } else {
-                for (String to : toAirports) {
-                    results.addAll(searchSpecificRoute(from, to, start, end, request, ctx));
-                }
+    /**
+     * Every itinerary from any of {@code fromAirports} to any of {@code toAirports} (empty means
+     * "anywhere"), in a fixed handful of queries regardless of how many airports are involved -
+     * one for the direct flights, two more if connections are in scope. Iterating airport pairs
+     * and querying per pair instead is what made a wide search ("all of Poland to all of Italy")
+     * cost hundreds of round trips.
+     */
+    private List<SearchResult> searchLegs(Set<String> fromAirports, Set<String> toAirports,
+                                           Instant start, Instant end, SearchRequest request, SearchContext ctx) {
+        List<SearchResult> results = new ArrayList<>();
+        if (fromAirports.isEmpty()) {
+            return results;
+        }
+        boolean anywhere = toAirports.isEmpty();
+
+        if (request.maxStops() >= 0) {
+            List<FlightWithPrice> directFlights = anywhere
+                ? flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end)
+                : flightRepository.findDirectFlightsBetweenAirports(fromAirports, toAirports, start, end);
+            for (FlightWithPrice flight : filterByAirlines(directFlights, request.airlines(), ctx)) {
+                results.add(createSearchResult(flight, ctx));
             }
+        }
+
+        if (request.maxStops() >= 1) {
+            results.addAll(findOneStopFlights(fromAirports, toAirports, start, end, request, ctx));
         }
 
         return results;
@@ -196,16 +214,24 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         boolean flexOrigin = request.allowReturnToDifferentAirport();
         boolean flexDestination = request.allowReturnFromDifferentAirport();
 
-        List<SearchResult> outboundResults = new ArrayList<>();
-        for (String from : fromAirports) {
-            if (anywhere) {
-                outboundResults.addAll(searchAnywhere(from, departureStart, departureEnd, request, ctx));
-            } else {
-                for (String to : toAirports) {
-                    outboundResults.addAll(searchSpecificRoute(from, to, departureStart, departureEnd, request, ctx));
-                }
-            }
+        List<SearchResult> outboundResults = searchLegs(fromAirports, toAirports, departureStart, departureEnd, request, ctx);
+        if (outboundResults.isEmpty()) {
+            return List.of();
         }
+
+        // One batched return search covering every airport any outbound option actually reached
+        // (and every airport a return could land back at), then matched up in memory below -
+        // rather than a fresh return search per outbound origin/destination group.
+        Set<String> allReturnOrigins = outboundResults.stream().map(this::destinationOf).collect(Collectors.toSet());
+        Set<String> allReturnDestinations = flexOrigin
+            ? fromAirports
+            : outboundResults.stream().map(this::originOf).collect(Collectors.toSet());
+        List<SearchResult> allReturns = searchLegs(allReturnOrigins, allReturnDestinations, returnStart, returnEnd, request, ctx);
+        if (allReturns.isEmpty()) {
+            return List.of();
+        }
+        Map<PairKey, List<SearchResult>> returnsByRoute = allReturns.stream()
+            .collect(Collectors.groupingBy(r -> new PairKey(originOf(r), destinationOf(r))));
 
         Map<PairKey, List<SearchResult>> byPair = outboundResults.stream()
             .collect(Collectors.groupingBy(r -> pairKey(r, flexOrigin, flexDestination), LinkedHashMap::new, Collectors.toList()));
@@ -214,15 +240,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         for (Map.Entry<PairKey, List<SearchResult>> entry : byPair.entrySet()) {
             List<SearchResult> group = entry.getValue();
 
-            Set<String> returnOrigins = flexDestination
-                ? group.stream().map(r -> r.segments().get(r.segments().size() - 1).toAirport()).collect(Collectors.toSet())
-                : Set.of(entry.getKey().destination());
-            Set<String> returnDestinations = flexOrigin ? fromAirports : Set.of(entry.getKey().origin());
+            Set<String> returnOrigins = flexDestination ? allReturnOrigins : Set.of(entry.getKey().destination());
+            Set<String> returnDestinations = flexOrigin ? allReturnDestinations : Set.of(entry.getKey().origin());
 
             List<SearchResult> returnResults = new ArrayList<>();
             for (String returnFrom : returnOrigins) {
                 for (String returnTo : returnDestinations) {
-                    returnResults.addAll(searchSpecificRoute(returnFrom, returnTo, returnStart, returnEnd, request, ctx));
+                    returnResults.addAll(returnsByRoute.getOrDefault(new PairKey(returnFrom, returnTo), List.of()));
                 }
             }
             if (returnResults.isEmpty()) {
@@ -253,13 +277,22 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
     private record PairKey(String origin, String destination) {}
 
+    private String originOf(SearchResult result) {
+        return result.segments().get(0).fromAirport();
+    }
+
+    private String destinationOf(SearchResult result) {
+        return result.segments().get(result.segments().size() - 1).toAirport();
+    }
+
     // Wildcards ("*") the side that's flexible - flights that only differ on that side then
-    // collapse into the same group, so the (usually few) return-leg searches happen once per
-    // group instead of once per exact outbound pair.
+    // collapse into the same group, so return legs get matched once per group instead of once
+    // per exact outbound pair.
     private PairKey pairKey(SearchResult result, boolean flexOrigin, boolean flexDestination) {
-        String origin = result.segments().get(0).fromAirport();
-        String destination = result.segments().get(result.segments().size() - 1).toAirport();
-        return new PairKey(flexOrigin ? "*" : origin, flexDestination ? "*" : destination);
+        return new PairKey(
+            flexOrigin ? "*" : originOf(result),
+            flexDestination ? "*" : destinationOf(result)
+        );
     }
 
     private SearchResult combineRoundTrip(SearchResult outbound, SearchResult ret) {
@@ -330,23 +363,41 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     }
 
     private Set<String> resolveToAirports(String to) {
-        Set<String> result = new HashSet<>();
+        List<String> tokens = new ArrayList<>();
         for (String rawToken : to.split(",")) {
             String token = rawToken.trim();
-            if (token.isEmpty()) {
-                continue;
+            if (!token.isEmpty()) {
+                tokens.add(token);
             }
+        }
+
+        // Loaded at most once per search, and only when a COUNTRY:/CITY: token actually needs
+        // it - a search with several such chips used to re-query the whole destination list once
+        // per chip.
+        List<AirportEntity> destinations = tokens.stream().anyMatch(this::needsDestinationList)
+            ? reachableDestinations()
+            : List.of();
+
+        Set<String> result = new HashSet<>();
+        for (String token : tokens) {
             if (WARSAW.equalsIgnoreCase(token)) {
                 result.addAll(WARSAW_AIRPORTS);
             } else if (token.regionMatches(true, 0, COUNTRY_PREFIX, 0, COUNTRY_PREFIX.length())) {
-                result.addAll(destinationsInCountry(token.substring(COUNTRY_PREFIX.length())));
+                String country = token.substring(COUNTRY_PREFIX.length());
+                result.addAll(matching(destinations, a -> a.country().equalsIgnoreCase(country)));
             } else if (token.regionMatches(true, 0, CITY_PREFIX, 0, CITY_PREFIX.length())) {
-                result.addAll(destinationsInCity(token.substring(CITY_PREFIX.length())));
+                String city = token.substring(CITY_PREFIX.length());
+                result.addAll(matching(destinations, a -> a.city().equalsIgnoreCase(city)));
             } else {
                 result.add(token.toUpperCase());
             }
         }
         return result;
+    }
+
+    private boolean needsDestinationList(String token) {
+        return token.regionMatches(true, 0, COUNTRY_PREFIX, 0, COUNTRY_PREFIX.length())
+            || token.regionMatches(true, 0, CITY_PREFIX, 0, CITY_PREFIX.length());
     }
 
     private List<AirportEntity> reachableDestinations() {
@@ -355,78 +406,25 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return destinations;
     }
 
-    private Set<String> destinationsInCountry(String country) {
-        return reachableDestinations().stream()
-            .filter(a -> a.country().equalsIgnoreCase(country))
+    private Set<String> matching(List<AirportEntity> destinations, Predicate<AirportEntity> filter) {
+        return destinations.stream()
+            .filter(filter)
             .map(AirportEntity::iata)
             .collect(Collectors.toSet());
     }
 
-    private Set<String> destinationsInCity(String city) {
-        return reachableDestinations().stream()
-            .filter(a -> a.city().equalsIgnoreCase(city))
-            .map(AirportEntity::iata)
-            .collect(Collectors.toSet());
-    }
-
-    private List<SearchResult> searchSpecificRoute(String from, String to, Instant start, Instant end,
-                                                     SearchRequest request, SearchContext ctx) {
-        List<SearchResult> results = new ArrayList<>();
-
-        // Direct flights
-        if (request.maxStops() >= 0) {
-            List<FlightWithPrice> directFlights = flightRepository.findDirectFlights(from, to, start, end);
-            directFlights = filterByAirlines(directFlights, request.airlines(), ctx);
-
-            for (FlightWithPrice flight : directFlights) {
-                results.add(createSearchResult(flight, ctx));
-            }
-        }
-
-        // One-stop flights
-        if (request.maxStops() >= 1) {
-            results.addAll(findOneStopFlights(from, to, start, end, request, ctx));
-        }
-
-        return results;
-    }
-
-    private List<SearchResult> searchAnywhere(String from, Instant start, Instant end,
-                                                SearchRequest request, SearchContext ctx) {
-        List<SearchResult> results = new ArrayList<>();
-
-        // Direct flights to anywhere
-        if (request.maxStops() >= 0) {
-            List<FlightWithPrice> flights = flightRepository.findFlightsFromAnyDestination(from, start, end);
-            flights = filterByAirlines(flights, request.airlines(), ctx);
-
-            for (FlightWithPrice flight : flights) {
-                results.add(createSearchResult(flight, ctx));
-            }
-        }
-
-        // One-stop flights to anywhere
-        if (request.maxStops() >= 1) {
-            results.addAll(findOneStopFlightsAnywhere(from, start, end, request, ctx));
-        }
-
-        return results;
-    }
-
-    // Fetches every first-leg flight once, then every candidate connecting flight (across all
-    // connection airports at once) in a single second query, and matches them up in memory.
-    // Previously this issued one connecting-flight query per first-leg flight - with a dense
-    // route graph and a wide date range that meant hundreds to thousands of round trips for a
-    // single search.
-    private List<SearchResult> findOneStopFlights(String from, String to, Instant start, Instant end,
-                                                    SearchRequest request, SearchContext ctx) {
+    // Two queries total: every first leg out of any origin, then every candidate connecting
+    // flight (across all connection airports at once). Everything else is matched in memory.
+    private List<SearchResult> findOneStopFlights(Set<String> fromAirports, Set<String> toAirports,
+                                                    Instant start, Instant end, SearchRequest request, SearchContext ctx) {
+        boolean anywhere = toAirports.isEmpty();
         Duration minConnectionTime = effectiveMinConnectionTime(request);
         Duration maxConnectionTime = effectiveMaxConnectionTime(request);
 
-        List<FlightWithPrice> fromFlights = flightRepository.findFlightsFrom(from, start, end);
+        List<FlightWithPrice> fromFlights = flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end);
         fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
 
-        Map<String, List<FlightWithPrice>> firstLegsByConnection = groupByConnectionAirport(fromFlights, to, ctx);
+        Map<String, List<FlightWithPrice>> firstLegsByConnection = groupByConnectionAirport(fromFlights, ctx);
         if (firstLegsByConnection.isEmpty()) {
             return List.of();
         }
@@ -436,55 +434,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             .flatMap(Set::stream).collect(Collectors.toSet());
 
         Instant[] widestWindow = widestConnectionWindow(firstLegsByConnection.values(), minConnectionTime, maxConnectionTime);
-        List<FlightWithPrice> candidateSecondLegs = flightRepository.findDirectFlightsFromAirports(
-            allCandidateOrigins, to, widestWindow[0], widestWindow[1]);
-        candidateSecondLegs = filterByAirlines(candidateSecondLegs, request.airlines(), ctx);
-
-        Map<String, List<FlightWithPrice>> secondLegsByOrigin = groupByFromAirport(candidateSecondLegs, ctx);
-
-        List<SearchResult> results = new ArrayList<>();
-        for (Map.Entry<String, List<FlightWithPrice>> entry : firstLegsByConnection.entrySet()) {
-            List<FlightWithPrice> secondLegs = transferCandidates.get(entry.getKey()).stream()
-                .flatMap(origin -> secondLegsByOrigin.getOrDefault(origin, List.of()).stream())
-                .toList();
-            if (secondLegs.isEmpty()) {
-                continue;
-            }
-            for (FlightWithPrice firstFlight : entry.getValue()) {
-                Instant connectionFrom = firstFlight.arrival().plus(minConnectionTime);
-                Instant connectionTo = firstFlight.arrival().plus(maxConnectionTime);
-                for (FlightWithPrice secondFlight : secondLegs) {
-                    if (isWithin(secondFlight.departure(), connectionFrom, connectionTo)
-                        && isSameDayIfRequired(firstFlight.arrival(), secondFlight.departure(), request)) {
-                        results.add(createSearchResult(firstFlight, secondFlight, ctx));
-                    }
-                }
-            }
-        }
-
-        return results;
-    }
-
-    private List<SearchResult> findOneStopFlightsAnywhere(String from, Instant start, Instant end,
-                                                             SearchRequest request, SearchContext ctx) {
-        Duration minConnectionTime = effectiveMinConnectionTime(request);
-        Duration maxConnectionTime = effectiveMaxConnectionTime(request);
-
-        List<FlightWithPrice> fromFlights = flightRepository.findFlightsFromAnyDestination(from, start, end);
-        fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
-
-        Map<String, List<FlightWithPrice>> firstLegsByConnection = groupByConnectionAirport(fromFlights, null, ctx);
-        if (firstLegsByConnection.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, Set<String>> transferCandidates = transferCandidatesByConnection(firstLegsByConnection.keySet(), request, ctx);
-        Set<String> allCandidateOrigins = transferCandidates.values().stream()
-            .flatMap(Set::stream).collect(Collectors.toSet());
-
-        Instant[] widestWindow = widestConnectionWindow(firstLegsByConnection.values(), minConnectionTime, maxConnectionTime);
-        List<FlightWithPrice> candidateSecondLegs = flightRepository.findFlightsFromAnyDestinationFromAirports(
-            allCandidateOrigins, widestWindow[0], widestWindow[1]);
+        List<FlightWithPrice> candidateSecondLegs = anywhere
+            ? flightRepository.findFlightsFromAnyDestinationFromAirports(allCandidateOrigins, widestWindow[0], widestWindow[1])
+            : flightRepository.findDirectFlightsBetweenAirports(allCandidateOrigins, toAirports, widestWindow[0], widestWindow[1]);
         candidateSecondLegs = filterByAirlines(candidateSecondLegs, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> secondLegsByOrigin = groupByFromAirport(candidateSecondLegs, ctx);
@@ -506,10 +458,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                         || !isSameDayIfRequired(firstFlight.arrival(), secondFlight.departure(), request)) {
                         continue;
                     }
+                    // Keeps a plain direct flight from being reported as a connection too, and
+                    // rules out a second leg that just returns to where the first one landed.
                     String finalDestination = ctx.toAirport(secondFlight.routeId());
-                    if (finalDestination != null && !finalDestination.equals(connectionAirport)) {
-                        results.add(createSearchResult(firstFlight, secondFlight, ctx));
+                    if (finalDestination == null || finalDestination.equals(connectionAirport)) {
+                        continue;
                     }
+                    results.add(createSearchResult(firstFlight, secondFlight, ctx));
                 }
             }
         }
@@ -594,14 +549,16 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return !value.isBefore(from) && !value.isAfter(to);
     }
 
-    // Groups first-leg flights by the airport they land at (the potential connection point),
-    // skipping any that land directly at the final destination (that's a direct flight, not a
-    // connection) or whose route couldn't be resolved.
-    private Map<String, List<FlightWithPrice>> groupByConnectionAirport(List<FlightWithPrice> flights, String excludeDestination, SearchContext ctx) {
+    // Groups first-leg flights by the airport they land at (the potential connection point).
+    // Landing at one of the search's own destinations is not disqualifying - flying into
+    // Barcelona and on to Malaga is a real connection when the search covers all of Spain -
+    // so what keeps a direct flight from also being counted as a connection is the
+    // "final destination != connection airport" check at the pairing step, not this grouping.
+    private Map<String, List<FlightWithPrice>> groupByConnectionAirport(List<FlightWithPrice> flights, SearchContext ctx) {
         Map<String, List<FlightWithPrice>> byConnection = new HashMap<>();
         for (FlightWithPrice flight : flights) {
             String connectionAirport = ctx.toAirport(flight.routeId());
-            if (connectionAirport == null || connectionAirport.equals(excludeDestination)) {
+            if (connectionAirport == null) {
                 continue;
             }
             byConnection.computeIfAbsent(connectionAirport, k -> new ArrayList<>()).add(flight);

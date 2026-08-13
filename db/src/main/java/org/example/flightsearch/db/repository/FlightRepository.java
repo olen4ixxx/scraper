@@ -2,7 +2,6 @@ package org.example.flightsearch.db.repository;
 
 import org.example.flightsearch.db.entity.FlightEntity;
 import org.example.flightsearch.db.entity.FlightWithPrice;
-import org.example.flightsearch.db.entity.PriceSnapshotEntity;
 import org.springframework.data.jdbc.repository.query.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
@@ -34,86 +33,6 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
         JOIN route r ON f.route_id = r.id
         JOIN price_snapshot ps ON f.id = ps.flight_id
-        WHERE r.from_airport = :fromAirport AND r.to_airport = :toAirport
-        AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
-        ORDER BY ps.price ASC
-        """)
-    List<FlightWithPrice> findDirectFlights(
-        @Param("fromAirport") String fromAirport,
-        @Param("toAirport") String toAirport,
-        @Param("from") Instant from,
-        @Param("to") Instant to
-    );
-
-    @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
-        JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
-        WHERE r.from_airport = :airport
-        AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
-        ORDER BY f.departure ASC
-        """)
-    List<FlightWithPrice> findFlightsFrom(
-        @Param("airport") String airport,
-        @Param("from") Instant from,
-        @Param("to") Instant to
-    );
-
-    @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
-        JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
-        WHERE r.from_airport = :fromAirport
-        AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
-        ORDER BY f.departure ASC
-        """)
-    List<FlightWithPrice> findFlightsFromAnyDestination(
-        @Param("fromAirport") String fromAirport,
-        @Param("from") Instant from,
-        @Param("to") Instant to
-    );
-
-    // Batched connecting-flight lookups for one-stop search: one query covering every
-    // candidate connection airport at once, instead of one query per first-leg flight.
-    @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
-        JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
-        WHERE r.from_airport IN (:fromAirports) AND r.to_airport = :toAirport
-        AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
-        AND ps.collected_at = (
-            SELECT MAX(collected_at) FROM price_snapshot
-            WHERE flight_id = f.id
-        )
-        ORDER BY f.departure ASC
-        """)
-    List<FlightWithPrice> findDirectFlightsFromAirports(
-        @Param("fromAirports") Iterable<String> fromAirports,
-        @Param("toAirport") String toAirport,
-        @Param("from") Instant from,
-        @Param("to") Instant to
-    );
-
-    @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
-        JOIN route r ON f.route_id = r.id
-        JOIN price_snapshot ps ON f.id = ps.flight_id
         WHERE r.from_airport IN (:fromAirports)
         AND f.departure >= :from AND f.departure <= :to
         AND ps.price >= 5
@@ -125,6 +44,30 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         """)
     List<FlightWithPrice> findFlightsFromAnyDestinationFromAirports(
         @Param("fromAirports") Iterable<String> fromAirports,
+        @Param("from") Instant from,
+        @Param("to") Instant to
+    );
+
+    // Both sides batched: one query for every origin/destination combination the search covers,
+    // instead of one per (origin, destination) pair. Searching "all of Poland -> all of Italy"
+    // is 11 x 29 pairs, which used to mean 319 separate round trips to the database - the
+    // dominant cost once the database stopped being local (~40ms each against a hosted one).
+    @Query("""
+        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
+        JOIN route r ON f.route_id = r.id
+        JOIN price_snapshot ps ON f.id = ps.flight_id
+        WHERE r.from_airport IN (:fromAirports) AND r.to_airport IN (:toAirports)
+        AND f.departure >= :from AND f.departure <= :to
+        AND ps.price >= 5
+        AND ps.collected_at = (
+            SELECT MAX(collected_at) FROM price_snapshot
+            WHERE flight_id = f.id
+        )
+        ORDER BY ps.price ASC
+        """)
+    List<FlightWithPrice> findDirectFlightsBetweenAirports(
+        @Param("fromAirports") Iterable<String> fromAirports,
+        @Param("toAirports") Iterable<String> toAirports,
         @Param("from") Instant from,
         @Param("to") Instant to
     );
