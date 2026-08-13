@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -44,6 +45,15 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     private static final String COUNTRY_PREFIX = "COUNTRY:";
     private static final String CITY_PREFIX = "CITY:";
     private static final List<String> WARSAW_AIRPORTS = List.of("WAW", "WMI");
+    // Enough to browse through and to sort meaningfully, small enough that the page stays a
+    // couple of MB. Uncapped, a wide round-trip search rendered 3.5M itineraries into 18GB of
+    // HTML - the search itself took 5s, the browser never finished.
+    private static final int MAX_RESULTS = 500;
+    // The dead hours - deliberately narrower than "when it's dark". Landing at 23:30 and
+    // leaving at 00:30 is an hour's wait that happens to cross midnight, not a night spent in
+    // the terminal; a wait that reaches into 01:00-05:00 is.
+    private static final LocalTime NIGHT_START = LocalTime.of(1, 0);
+    private static final LocalTime NIGHT_END = LocalTime.of(5, 0);
 
     @Value("${flight.search.min-connection-minutes:90}")
     private int minConnectionMinutes;
@@ -133,12 +143,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
         sortResults(allResults, request.sortBy());
 
-        // Limit results for Anywhere searches
-        if (anywhere) {
-            allResults = allResults.stream().limit(50).collect(Collectors.toList());
+        int found = allResults.size();
+        if (found > MAX_RESULTS) {
+            allResults = allResults.subList(0, MAX_RESULTS);
         }
 
-        logger.info("Found {} flight paths in {}ms", allResults.size(), System.currentTimeMillis() - startTime);
+        logger.info("Found {} flight paths in {}ms{}", found, System.currentTimeMillis() - startTime,
+            found > MAX_RESULTS ? " (returning the top " + MAX_RESULTS + ")" : "");
         return allResults;
     }
 
@@ -236,7 +247,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         Map<PairKey, List<SearchResult>> byPair = outboundResults.stream()
             .collect(Collectors.groupingBy(r -> pairKey(r, flexOrigin, flexDestination), LinkedHashMap::new, Collectors.toList()));
 
-        List<SearchResult> results = new ArrayList<>();
+        // Pairing every outbound with every return is a cross product: a fortnight-wide search
+        // across two countries produced 3.5 million itineraries, nearly all of them the same
+        // trip with a different connection or departure time. Only the cheapest itinerary per
+        // (route, outbound day, return day) is kept - that's the ~50-200 genuinely different
+        // trips a person is choosing between - and it's kept while pairing rather than filtered
+        // afterwards, so the discarded millions are never built in the first place.
+        Map<TripKey, SearchResult> cheapestPerTrip = new LinkedHashMap<>();
         for (Map.Entry<PairKey, List<SearchResult>> entry : byPair.entrySet()) {
             List<SearchResult> group = entry.getValue();
 
@@ -267,13 +284,20 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                     if (request.stayMaxDays() != null && stayDays > request.stayMaxDays()) {
                         continue;
                     }
-                    results.add(combineRoundTrip(outbound, ret));
+                    TripKey key = new TripKey(originOf(outbound), destinationOf(outbound), outboundDate, returnDate);
+                    SearchResult best = cheapestPerTrip.get(key);
+                    double total = outbound.totalPrice() + ret.totalPrice();
+                    if (best == null || total < best.totalPrice()) {
+                        cheapestPerTrip.put(key, combineRoundTrip(outbound, ret));
+                    }
                 }
             }
         }
 
-        return results;
+        return new ArrayList<>(cheapestPerTrip.values());
     }
+
+    private record TripKey(String origin, String destination, LocalDate outboundDate, LocalDate returnDate) {}
 
     private record PairKey(String origin, String destination) {}
 
@@ -455,7 +479,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                 Instant connectionTo = firstFlight.arrival().plus(maxConnectionTime);
                 for (FlightWithPrice secondFlight : secondLegs) {
                     if (!isWithin(secondFlight.departure(), connectionFrom, connectionTo)
-                        || !isSameDayIfRequired(firstFlight.arrival(), secondFlight.departure(), request)) {
+                        || !connectionIsAcceptable(firstFlight.arrival(), secondFlight.departure(), request)) {
                         continue;
                     }
                     // Keeps a plain direct flight from being reported as a connection too, and
@@ -472,13 +496,30 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return results;
     }
 
-    private boolean isSameDayIfRequired(Instant arrival, Instant departure, SearchRequest request) {
-        if (request.allowOvernightConnection()) {
+    private boolean connectionIsAcceptable(Instant arrival, Instant departure, SearchRequest request) {
+        return request.allowOvernightConnection() || !isOvernightConnection(arrival, departure);
+    }
+
+    /**
+     * Whether the wait between two flights runs through the night, which is what someone
+     * ruling out overnight connections actually cares about - not whether the calendar date
+     * changes. Landing at 01:15 and leaving at 05:45 is a single date but is a night spent in
+     * the terminal; landing at 23:30 and leaving at 00:30 crosses midnight but is an hour's wait.
+     */
+    private boolean isOvernightConnection(Instant arrival, Instant departure) {
+        LocalDateTime arrivalTime = LocalDateTime.ofInstant(arrival, ZoneOffset.UTC);
+        LocalDateTime departureTime = LocalDateTime.ofInstant(departure, ZoneOffset.UTC);
+        if (Duration.between(arrivalTime, departureTime).toHours() >= 24) {
             return true;
         }
-        LocalDate arrivalDate = LocalDateTime.ofInstant(arrival, ZoneOffset.UTC).toLocalDate();
-        LocalDate departureDate = LocalDateTime.ofInstant(departure, ZoneOffset.UTC).toLocalDate();
-        return arrivalDate.equals(departureDate);
+        // A wait shorter than a day can only reach the dead hours of the arrival's own date or
+        // of the following one.
+        for (LocalDate day : List.of(arrivalTime.toLocalDate(), arrivalTime.toLocalDate().plusDays(1))) {
+            if (arrivalTime.isBefore(day.atTime(NIGHT_END)) && departureTime.isAfter(day.atTime(NIGHT_START))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Without ground transfer, the only valid second-leg origin for a given connection airport
