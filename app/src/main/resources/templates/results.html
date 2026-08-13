@@ -57,17 +57,63 @@
         .result-card {
             background: white;
             border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 15px;
+            padding: 12px 20px;
+            margin-bottom: 10px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        
+
         .result-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
         }
-        
+
+        .result-summary {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            cursor: pointer;
+        }
+
+        .summary-price {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+            min-width: 90px;
+            flex-shrink: 0;
+        }
+
+        .summary-lines {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .summary-line {
+            font-size: 13px;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .summary-leg-label {
+            display: inline-block;
+            font-weight: 700;
+            color: #667eea;
+            width: 42px;
+        }
+
+        .result-full {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .result-card.expanded .result-full {
+            display: block;
+        }
+
         .result-header {
             display: flex;
             justify-content: space-between;
@@ -294,7 +340,7 @@
 </head>
 <body>
     <div class="container">
-        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, directOnly=${qDirectOnly}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy}, minConnectionMinutes=${qMinConnectionMinutes}, maxConnectionMinutes=${qMaxConnectionMinutes})}" class="back-link">← Back to search</a>
+        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy}, minConnectionMinutes=${qMinConnectionMinutes}, maxConnectionMinutes=${qMaxConnectionMinutes}, stayMinDays=${qStayMinDays}, stayMaxDays=${qStayMaxDays}, allowOvernightConnection=${qAllowOvernightConnection}, allowReturnToDifferentAirport=${qAllowReturnToDifferentAirport}, allowReturnFromDifferentAirport=${qAllowReturnFromDifferentAirport}, allowGroundTransfer=${qAllowGroundTransfer}, groundTransferRadiusKm=${qGroundTransferRadiusKm})}" class="back-link">← Back to search</a>
         
         <div class="header">
             <h1 th:text="${from} + ' → ' + ${to}">Warsaw → Anywhere</h1>
@@ -308,6 +354,21 @@
         </div>
         
         <div th:each="result : ${results}" class="result-card">
+            <div class="result-summary" onclick="toggleExpand(this)">
+                <div class="summary-price" th:text="${#numbers.formatDecimal(result.totalPrice, 1, 2)} + ' ' + ${result.currency}">€26.58</div>
+                <div class="summary-lines">
+                    <div class="summary-line">
+                        <span class="summary-leg-label">There</span>
+                        <span th:text="${#temporals.format(result.departure, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.departure, 'HH:mm')} + ' ' + ${result.segments[0].fromCity} + ' ' + ${result.segments[0].fromAirport} + ' ' + ${#temporals.format(result.arrival, 'HH:mm')} + ' ' + ${result.segments[result.segments.size() - 1].toCity} + ' ' + ${result.segments[result.segments.size() - 1].toAirport} + ' ' + ${result.duration.toHours()} + ':' + ${#numbers.formatInteger(result.duration.toMinutes() % 60, 2)} + ' h / ' + ${result.numberOfStops == 0 ? 'no change' : result.numberOfStops + ' change' + (result.numberOfStops > 1 ? 's' : '')}">Tue 25/08/26 12:25 Poznan POZ 14:10 Brussels CRL 1:45 h / no change</span>
+                    </div>
+                    <div class="summary-line" th:if="${result.roundTrip}">
+                        <span class="summary-leg-label">Back</span>
+                        <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.returnDeparture, 'HH:mm')} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${#temporals.format(result.returnArrival, 'HH:mm')} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.returnDuration.toHours()} + ':' + ${#numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2)} + ' h / ' + ${result.returnNumberOfStops == 0 ? 'no change' : result.returnNumberOfStops + ' change' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / no change</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="result-full">
             <div class="result-header">
                 <div>
                     <div class="price" th:text="${#numbers.formatDecimal(result.totalPrice, 1, 2)} + ' ' + ${result.currency}">€19.99</div>
@@ -398,10 +459,15 @@
                     </div>
                 </div>
             </div>
+            </div>
         </div>
     </div>
-    
+
     <script>
+        function toggleExpand(summary) {
+            summary.closest('.result-card').classList.toggle('expanded');
+        }
+
         function toggleDetails(button) {
             const card = button.closest('.result-card');
             const segments = card.querySelector('.segments');

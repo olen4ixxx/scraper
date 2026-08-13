@@ -398,11 +398,6 @@
                 </div>
             </div>
 
-            <div class="checkbox-group">
-                <input type="checkbox" id="directOnly" name="directOnly">
-                <label for="directOnly">Direct flights only</label>
-            </div>
-            
             <div class="form-group">
                 <label for="maxStops">Maximum stops</label>
                 <select id="maxStops" name="maxStops">
@@ -437,6 +432,54 @@
                 </div>
                 <input type="hidden" id="minConnectionMinutesHidden" name="minConnectionMinutes">
                 <input type="hidden" id="maxConnectionMinutesHidden" name="maxConnectionMinutes">
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="allowOvernightConnection" name="allowOvernightConnection">
+                <label for="allowOvernightConnection">I don't mind waiting at the airport overnight (next flight can be next day)</label>
+            </div>
+
+            <div class="form-group">
+                <label>Allow ground transfer between nearby airports (for 1+ stop searches)</label>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="allowGroundTransfer" name="allowGroundTransfer">
+                    <label for="allowGroundTransfer">e.g. land at Milan Malpensa, connect onward from Milan Bergamo</label>
+                </div>
+                <div class="conn-window" id="groundTransferRadiusRow" style="display:none;">
+                    <div class="conn-field">
+                        <span class="conn-field-label">Within</span>
+                        <input type="number" id="groundTransferRadiusKm" name="groundTransferRadiusKm" class="conn-input" min="0" max="500" step="50" value="100">
+                        <span class="conn-unit">km</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group" id="stayDurationGroup">
+                <label>Length of stay (for round trips)</label>
+                <div class="conn-window">
+                    <div class="conn-field">
+                        <span class="conn-field-label">Min</span>
+                        <input type="number" id="stayMinDays" name="stayMinDays" class="conn-input" min="0" max="365" step="1" placeholder="any">
+                        <span class="conn-unit">days</span>
+                    </div>
+                    <div class="conn-field">
+                        <span class="conn-field-label">Max</span>
+                        <input type="number" id="stayMaxDays" name="stayMaxDays" class="conn-input" min="0" max="365" step="1" placeholder="any">
+                        <span class="conn-unit">days</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group" id="asymmetricAirportsGroup">
+                <label>Round-trip airports (for round trips)</label>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="allowReturnToDifferentAirport" name="allowReturnToDifferentAirport">
+                    <label for="allowReturnToDifferentAirport">Return to a different departure airport (e.g. out of WMI, back into Krakow or WAW)</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="allowReturnFromDifferentAirport" name="allowReturnFromDifferentAirport">
+                    <label for="allowReturnFromDifferentAirport">Depart the return leg from a different arrival airport (e.g. any airport in France)</label>
+                </div>
             </div>
 
             <div class="form-group">
@@ -482,7 +525,14 @@
             airlines: /*[[${prefillAirlines}]]*/ null,
             sortBy: /*[[${prefillSortBy}]]*/ null,
             minConnectionMinutes: /*[[${prefillMinConnectionMinutes}]]*/ null,
-            maxConnectionMinutes: /*[[${prefillMaxConnectionMinutes}]]*/ null
+            maxConnectionMinutes: /*[[${prefillMaxConnectionMinutes}]]*/ null,
+            stayMinDays: /*[[${prefillStayMinDays}]]*/ null,
+            stayMaxDays: /*[[${prefillStayMaxDays}]]*/ null,
+            allowOvernightConnection: /*[[${prefillAllowOvernightConnection}]]*/ false,
+            allowReturnToDifferentAirport: /*[[${prefillAllowReturnToDifferentAirport}]]*/ false,
+            allowReturnFromDifferentAirport: /*[[${prefillAllowReturnFromDifferentAirport}]]*/ false,
+            allowGroundTransfer: /*[[${prefillAllowGroundTransfer}]]*/ false,
+            groundTransferRadiusKm: /*[[${prefillGroundTransferRadiusKm}]]*/ null
         };
     </script>
     <script>
@@ -797,7 +847,6 @@
         const departureRangeEndEl = document.getElementById('departureRangeEnd');
         const returnDateEl = document.getElementById('returnDate');
         const returnRangeEndEl = document.getElementById('returnRangeEnd');
-        const directOnlyEl = document.getElementById('directOnly');
         const maxStopsEl = document.getElementById('maxStops');
         const sortByEl = document.getElementById('sortBy');
         const ryanairEl = document.getElementById('ryanair');
@@ -809,7 +858,6 @@
         if (PREFILL.departureRangeEnd) departureRangeEndEl.value = PREFILL.departureRangeEnd;
         if (PREFILL.returnDate) returnDateEl.value = PREFILL.returnDate;
         if (PREFILL.returnRangeEnd) returnRangeEndEl.value = PREFILL.returnRangeEnd;
-        directOnlyEl.checked = !!PREFILL.directOnly;
         if (PREFILL.maxStops !== null && PREFILL.maxStops !== undefined) maxStopsEl.value = String(PREFILL.maxStops);
         if (PREFILL.sortBy) sortByEl.value = PREFILL.sortBy;
         if (PREFILL.airlines) {
@@ -855,6 +903,34 @@
         }
         updateMaxConnDisabledState();
         maxConnDaysEl.addEventListener('input', updateMaxConnDisabledState);
+
+        // Overnight connection, ground transfer, round-trip airport flexibility, stay duration -
+        // all plain fields that submit natively (name= matches the controller param directly),
+        // this just repopulates them from PREFILL and wires the ground-transfer radius reveal.
+        const allowOvernightConnectionEl = document.getElementById('allowOvernightConnection');
+        const allowGroundTransferEl = document.getElementById('allowGroundTransfer');
+        const groundTransferRadiusRowEl = document.getElementById('groundTransferRadiusRow');
+        const groundTransferRadiusKmEl = document.getElementById('groundTransferRadiusKm');
+        const allowReturnToDifferentAirportEl = document.getElementById('allowReturnToDifferentAirport');
+        const allowReturnFromDifferentAirportEl = document.getElementById('allowReturnFromDifferentAirport');
+        const stayMinDaysEl = document.getElementById('stayMinDays');
+        const stayMaxDaysEl = document.getElementById('stayMaxDays');
+
+        allowOvernightConnectionEl.checked = !!PREFILL.allowOvernightConnection;
+        allowReturnToDifferentAirportEl.checked = !!PREFILL.allowReturnToDifferentAirport;
+        allowReturnFromDifferentAirportEl.checked = !!PREFILL.allowReturnFromDifferentAirport;
+        if (PREFILL.stayMinDays !== null && PREFILL.stayMinDays !== undefined) stayMinDaysEl.value = PREFILL.stayMinDays;
+        if (PREFILL.stayMaxDays !== null && PREFILL.stayMaxDays !== undefined) stayMaxDaysEl.value = PREFILL.stayMaxDays;
+        if (PREFILL.groundTransferRadiusKm !== null && PREFILL.groundTransferRadiusKm !== undefined) {
+            groundTransferRadiusKmEl.value = PREFILL.groundTransferRadiusKm;
+        }
+
+        function updateGroundTransferRadiusVisibility() {
+            groundTransferRadiusRowEl.style.display = allowGroundTransferEl.checked ? 'flex' : 'none';
+        }
+        allowGroundTransferEl.checked = !!PREFILL.allowGroundTransfer;
+        updateGroundTransferRadiusVisibility();
+        allowGroundTransferEl.addEventListener('change', updateGroundTransferRadiusVisibility);
 
         document.querySelector('form').addEventListener('submit', function() {
             const minH = parseInt(minConnHoursEl.value, 10) || 0;
