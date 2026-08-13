@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -113,9 +114,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     @Override
     public List<SearchResult> search(SearchRequest request) {
         long startTime = System.currentTimeMillis();
-        logger.info("Searching flights: from={}, to={}, departure={}..{}, return={}..{}, directOnly={}, maxStops={}",
+        logger.info("Searching flights: from={}, to={}, departure={}..{}, return={}..{}, maxStops={}",
             request.from(), request.to(), request.departure(), request.departureRangeEnd(),
-            request.returnDate(), request.returnRangeEnd(), request.directOnly(), request.maxStops());
+            request.returnDate(), request.returnRangeEnd(), request.maxStops());
 
         SearchContext ctx = buildContext();
         Set<String> fromAirports = resolveFromAirports(request.from());
@@ -177,6 +178,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     // return option whose date isn't before its own outbound date. Grouping by the pair actually
     // flown is what makes this work for "Anywhere" too - the return leg only ever gets searched
     // back from wherever the outbound leg actually landed.
+    //
+    // allowReturnToDifferentAirport / allowReturnFromDifferentAirport relax which airports the
+    // return leg is allowed to use: normally it must land back at the exact fromAirports airport
+    // used and depart from the exact airport the outbound landed at. With either flag on, that
+    // side of the pair is widened to "anywhere in the same searched group" instead of "exactly
+    // this airport" - grouping outbound results on a wildcard for that side so the (usually much
+    // smaller) return search only runs once per group instead of once per exact pair.
     private List<SearchResult> searchRoundTrip(Set<String> fromAirports, boolean anywhere,
                                                 List<LocalDate> departureDates, SearchRequest request, SearchContext ctx) {
         List<LocalDate> returnDates = dateRange(request.returnDate(), request.returnRangeEnd());
@@ -185,6 +193,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         Instant returnStart = rangeStart(returnDates);
         Instant returnEnd = rangeEnd(returnDates);
         Set<String> toAirports = anywhere ? Set.of() : resolveToAirports(request.to());
+        boolean flexOrigin = request.allowReturnToDifferentAirport();
+        boolean flexDestination = request.allowReturnFromDifferentAirport();
 
         List<SearchResult> outboundResults = new ArrayList<>();
         for (String from : fromAirports) {
@@ -197,22 +207,40 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             }
         }
 
-        Map<List<String>, List<SearchResult>> byPair = outboundResults.stream()
-            .collect(Collectors.groupingBy(this::originDestinationPair, LinkedHashMap::new, Collectors.toList()));
+        Map<PairKey, List<SearchResult>> byPair = outboundResults.stream()
+            .collect(Collectors.groupingBy(r -> pairKey(r, flexOrigin, flexDestination), LinkedHashMap::new, Collectors.toList()));
 
         List<SearchResult> results = new ArrayList<>();
-        for (Map.Entry<List<String>, List<SearchResult>> entry : byPair.entrySet()) {
-            String origin = entry.getKey().get(0);
-            String destination = entry.getKey().get(1);
+        for (Map.Entry<PairKey, List<SearchResult>> entry : byPair.entrySet()) {
+            List<SearchResult> group = entry.getValue();
 
-            List<SearchResult> returnResults = searchSpecificRoute(destination, origin, returnStart, returnEnd, request, ctx);
+            Set<String> returnOrigins = flexDestination
+                ? group.stream().map(r -> r.segments().get(r.segments().size() - 1).toAirport()).collect(Collectors.toSet())
+                : Set.of(entry.getKey().destination());
+            Set<String> returnDestinations = flexOrigin ? fromAirports : Set.of(entry.getKey().origin());
+
+            List<SearchResult> returnResults = new ArrayList<>();
+            for (String returnFrom : returnOrigins) {
+                for (String returnTo : returnDestinations) {
+                    returnResults.addAll(searchSpecificRoute(returnFrom, returnTo, returnStart, returnEnd, request, ctx));
+                }
+            }
             if (returnResults.isEmpty()) {
                 continue;
             }
-            for (SearchResult outbound : entry.getValue()) {
+
+            for (SearchResult outbound : group) {
                 LocalDate outboundDate = outbound.departure().toLocalDate();
                 for (SearchResult ret : returnResults) {
-                    if (ret.departure().toLocalDate().isBefore(outboundDate)) {
+                    LocalDate returnDate = ret.departure().toLocalDate();
+                    if (returnDate.isBefore(outboundDate)) {
+                        continue;
+                    }
+                    long stayDays = ChronoUnit.DAYS.between(outboundDate, returnDate);
+                    if (request.stayMinDays() != null && stayDays < request.stayMinDays()) {
+                        continue;
+                    }
+                    if (request.stayMaxDays() != null && stayDays > request.stayMaxDays()) {
                         continue;
                     }
                     results.add(combineRoundTrip(outbound, ret));
@@ -223,11 +251,15 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return results;
     }
 
-    private List<String> originDestinationPair(SearchResult result) {
-        return List.of(
-            result.segments().get(0).fromAirport(),
-            result.segments().get(result.segments().size() - 1).toAirport()
-        );
+    private record PairKey(String origin, String destination) {}
+
+    // Wildcards ("*") the side that's flexible - flights that only differ on that side then
+    // collapse into the same group, so the (usually few) return-leg searches happen once per
+    // group instead of once per exact outbound pair.
+    private PairKey pairKey(SearchResult result, boolean flexOrigin, boolean flexDestination) {
+        String origin = result.segments().get(0).fromAirport();
+        String destination = result.segments().get(result.segments().size() - 1).toAirport();
+        return new PairKey(flexOrigin ? "*" : origin, flexDestination ? "*" : destination);
     }
 
     private SearchResult combineRoundTrip(SearchResult outbound, SearchResult ret) {
@@ -352,7 +384,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
 
         // One-stop flights
-        if (!request.directOnly() && request.maxStops() >= 1) {
+        if (request.maxStops() >= 1) {
             results.addAll(findOneStopFlights(from, to, start, end, request, ctx));
         }
 
@@ -374,7 +406,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
 
         // One-stop flights to anywhere
-        if (!request.directOnly() && request.maxStops() >= 1) {
+        if (request.maxStops() >= 1) {
             results.addAll(findOneStopFlightsAnywhere(from, start, end, request, ctx));
         }
 
@@ -399,24 +431,31 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             return List.of();
         }
 
+        Map<String, Set<String>> transferCandidates = transferCandidatesByConnection(firstLegsByConnection.keySet(), request, ctx);
+        Set<String> allCandidateOrigins = transferCandidates.values().stream()
+            .flatMap(Set::stream).collect(Collectors.toSet());
+
         Instant[] widestWindow = widestConnectionWindow(firstLegsByConnection.values(), minConnectionTime, maxConnectionTime);
         List<FlightWithPrice> candidateSecondLegs = flightRepository.findDirectFlightsFromAirports(
-            firstLegsByConnection.keySet(), to, widestWindow[0], widestWindow[1]);
+            allCandidateOrigins, to, widestWindow[0], widestWindow[1]);
         candidateSecondLegs = filterByAirlines(candidateSecondLegs, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> secondLegsByOrigin = groupByFromAirport(candidateSecondLegs, ctx);
 
         List<SearchResult> results = new ArrayList<>();
         for (Map.Entry<String, List<FlightWithPrice>> entry : firstLegsByConnection.entrySet()) {
-            List<FlightWithPrice> secondLegs = secondLegsByOrigin.get(entry.getKey());
-            if (secondLegs == null) {
+            List<FlightWithPrice> secondLegs = transferCandidates.get(entry.getKey()).stream()
+                .flatMap(origin -> secondLegsByOrigin.getOrDefault(origin, List.of()).stream())
+                .toList();
+            if (secondLegs.isEmpty()) {
                 continue;
             }
             for (FlightWithPrice firstFlight : entry.getValue()) {
                 Instant connectionFrom = firstFlight.arrival().plus(minConnectionTime);
                 Instant connectionTo = firstFlight.arrival().plus(maxConnectionTime);
                 for (FlightWithPrice secondFlight : secondLegs) {
-                    if (isWithin(secondFlight.departure(), connectionFrom, connectionTo)) {
+                    if (isWithin(secondFlight.departure(), connectionFrom, connectionTo)
+                        && isSameDayIfRequired(firstFlight.arrival(), secondFlight.departure(), request)) {
                         results.add(createSearchResult(firstFlight, secondFlight, ctx));
                     }
                 }
@@ -439,9 +478,13 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             return List.of();
         }
 
+        Map<String, Set<String>> transferCandidates = transferCandidatesByConnection(firstLegsByConnection.keySet(), request, ctx);
+        Set<String> allCandidateOrigins = transferCandidates.values().stream()
+            .flatMap(Set::stream).collect(Collectors.toSet());
+
         Instant[] widestWindow = widestConnectionWindow(firstLegsByConnection.values(), minConnectionTime, maxConnectionTime);
         List<FlightWithPrice> candidateSecondLegs = flightRepository.findFlightsFromAnyDestinationFromAirports(
-            firstLegsByConnection.keySet(), widestWindow[0], widestWindow[1]);
+            allCandidateOrigins, widestWindow[0], widestWindow[1]);
         candidateSecondLegs = filterByAirlines(candidateSecondLegs, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> secondLegsByOrigin = groupByFromAirport(candidateSecondLegs, ctx);
@@ -449,15 +492,18 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         List<SearchResult> results = new ArrayList<>();
         for (Map.Entry<String, List<FlightWithPrice>> entry : firstLegsByConnection.entrySet()) {
             String connectionAirport = entry.getKey();
-            List<FlightWithPrice> secondLegs = secondLegsByOrigin.get(connectionAirport);
-            if (secondLegs == null) {
+            List<FlightWithPrice> secondLegs = transferCandidates.get(connectionAirport).stream()
+                .flatMap(origin -> secondLegsByOrigin.getOrDefault(origin, List.of()).stream())
+                .toList();
+            if (secondLegs.isEmpty()) {
                 continue;
             }
             for (FlightWithPrice firstFlight : entry.getValue()) {
                 Instant connectionFrom = firstFlight.arrival().plus(minConnectionTime);
                 Instant connectionTo = firstFlight.arrival().plus(maxConnectionTime);
                 for (FlightWithPrice secondFlight : secondLegs) {
-                    if (!isWithin(secondFlight.departure(), connectionFrom, connectionTo)) {
+                    if (!isWithin(secondFlight.departure(), connectionFrom, connectionTo)
+                        || !isSameDayIfRequired(firstFlight.arrival(), secondFlight.departure(), request)) {
                         continue;
                     }
                     String finalDestination = ctx.toAirport(secondFlight.routeId());
@@ -469,6 +515,65 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
 
         return results;
+    }
+
+    private boolean isSameDayIfRequired(Instant arrival, Instant departure, SearchRequest request) {
+        if (request.allowOvernightConnection()) {
+            return true;
+        }
+        LocalDate arrivalDate = LocalDateTime.ofInstant(arrival, ZoneOffset.UTC).toLocalDate();
+        LocalDate departureDate = LocalDateTime.ofInstant(departure, ZoneOffset.UTC).toLocalDate();
+        return arrivalDate.equals(departureDate);
+    }
+
+    // Without ground transfer, the only valid second-leg origin for a given connection airport
+    // is that airport itself. With it on, any airport within groundTransferRadiusKm also counts -
+    // the existing connection-time window is what limits how long that transfer is allowed to
+    // take, there's no separate transfer-time setting.
+    private Map<String, Set<String>> transferCandidatesByConnection(Set<String> connectionAirports,
+                                                                       SearchRequest request, SearchContext ctx) {
+        Map<String, Set<String>> result = new HashMap<>();
+        if (!request.allowGroundTransfer()) {
+            for (String airport : connectionAirports) {
+                result.put(airport, Set.of(airport));
+            }
+            return result;
+        }
+        double radiusKm = request.groundTransferRadiusKm() != null ? request.groundTransferRadiusKm() : 100;
+        for (String airport : connectionAirports) {
+            result.put(airport, nearbyAirports(airport, radiusKm, ctx));
+        }
+        return result;
+    }
+
+    private Set<String> nearbyAirports(String iata, double radiusKm, SearchContext ctx) {
+        AirportEntity origin = ctx.airportsByIata().get(iata);
+        Set<String> nearby = new HashSet<>();
+        nearby.add(iata);
+        if (origin == null || origin.lat() == null || origin.lon() == null) {
+            return nearby;
+        }
+        for (AirportEntity candidate : ctx.airportsByIata().values()) {
+            if (candidate.iata().equals(iata) || candidate.lat() == null || candidate.lon() == null) {
+                continue;
+            }
+            if (haversineKm(origin.lat(), origin.lon(), candidate.lat(), candidate.lon()) <= radiusKm) {
+                nearby.add(candidate.iata());
+            }
+        }
+        return nearby;
+    }
+
+    private static final double EARTH_RADIUS_KM = 6371.0;
+
+    private double haversineKm(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+            + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+            * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return EARTH_RADIUS_KM * c;
     }
 
     // Falls back to the configured default (application.yml) when the user's search didn't
@@ -597,7 +702,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         String firstTo = ctx.toAirport(firstFlight.routeId());
 
         String secondAirline = ctx.airline(secondFlight.routeId());
-        String secondFrom = firstTo;
+        // Normally equal to firstTo, but with ground transfer allowed the second leg can depart
+        // from a different (nearby) airport than the one the first leg landed at.
+        String secondFrom = ctx.fromAirport(secondFlight.routeId());
         String secondTo = ctx.toAirport(secondFlight.routeId());
 
         LocalDateTime departure = LocalDateTime.ofInstant(firstFlight.departure(), ZoneOffset.UTC);

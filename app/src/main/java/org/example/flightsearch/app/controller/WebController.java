@@ -54,12 +54,18 @@ public class WebController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate departureRangeEnd,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate returnDate,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate returnRangeEnd,
-        @RequestParam(required = false) Boolean directOnly,
         @RequestParam(required = false) Integer maxStops,
         @RequestParam(required = false) List<String> airlines,
         @RequestParam(required = false) SearchRequest.SortBy sortBy,
         @RequestParam(required = false) Integer minConnectionMinutes,
         @RequestParam(required = false) Integer maxConnectionMinutes,
+        @RequestParam(required = false) Integer stayMinDays,
+        @RequestParam(required = false) Integer stayMaxDays,
+        @RequestParam(required = false) Boolean allowOvernightConnection,
+        @RequestParam(required = false) Boolean allowReturnToDifferentAirport,
+        @RequestParam(required = false) Boolean allowReturnFromDifferentAirport,
+        @RequestParam(required = false) Boolean allowGroundTransfer,
+        @RequestParam(required = false) Integer groundTransferRadiusKm,
         Model model
     ) {
         model.addAttribute("destinations", airportRepository.findDestinationsFrom(PolandAirports.ALL));
@@ -74,12 +80,18 @@ public class WebController {
         model.addAttribute("prefillDepartureRangeEnd", departureRangeEnd != null ? departureRangeEnd.toString() : null);
         model.addAttribute("prefillReturnDate", returnDate != null ? returnDate.toString() : null);
         model.addAttribute("prefillReturnRangeEnd", returnRangeEnd != null ? returnRangeEnd.toString() : null);
-        model.addAttribute("prefillDirectOnly", directOnly != null && directOnly);
         model.addAttribute("prefillMaxStops", maxStops);
         model.addAttribute("prefillAirlines", airlines);
         model.addAttribute("prefillSortBy", sortBy != null ? sortBy.name() : null);
         model.addAttribute("prefillMinConnectionMinutes", minConnectionMinutes);
         model.addAttribute("prefillMaxConnectionMinutes", maxConnectionMinutes);
+        model.addAttribute("prefillStayMinDays", stayMinDays);
+        model.addAttribute("prefillStayMaxDays", stayMaxDays);
+        model.addAttribute("prefillAllowOvernightConnection", allowOvernightConnection != null && allowOvernightConnection);
+        model.addAttribute("prefillAllowReturnToDifferentAirport", allowReturnToDifferentAirport != null && allowReturnToDifferentAirport);
+        model.addAttribute("prefillAllowReturnFromDifferentAirport", allowReturnFromDifferentAirport != null && allowReturnFromDifferentAirport);
+        model.addAttribute("prefillAllowGroundTransfer", allowGroundTransfer != null && allowGroundTransfer);
+        model.addAttribute("prefillGroundTransferRadiusKm", groundTransferRadiusKm);
 
         return "index";
     }
@@ -92,12 +104,18 @@ public class WebController {
         @RequestParam(required = false) @DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate departureRangeEnd,
         @RequestParam(required = false) @DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate returnDate,
         @RequestParam(required = false) @DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate returnRangeEnd,
-        @RequestParam(defaultValue = "false") boolean directOnly,
         @RequestParam(defaultValue = "1") int maxStops,
         @RequestParam(required = false) List<String> airlines,
         @RequestParam(defaultValue = "CHEAPEST") SearchRequest.SortBy sortBy,
         @RequestParam(required = false) Integer minConnectionMinutes,
         @RequestParam(required = false) Integer maxConnectionMinutes,
+        @RequestParam(required = false) Integer stayMinDays,
+        @RequestParam(required = false) Integer stayMaxDays,
+        @RequestParam(defaultValue = "false") boolean allowOvernightConnection,
+        @RequestParam(defaultValue = "false") boolean allowReturnToDifferentAirport,
+        @RequestParam(defaultValue = "false") boolean allowReturnFromDifferentAirport,
+        @RequestParam(defaultValue = "false") boolean allowGroundTransfer,
+        @RequestParam(required = false) Integer groundTransferRadiusKm,
         Model model
     ) {
         Set<Airline> airlineSet = new HashSet<>();
@@ -112,8 +130,9 @@ public class WebController {
         }
 
         SearchRequest request = new SearchRequest(
-            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlineSet, sortBy,
-            minConnectionMinutes, maxConnectionMinutes
+            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, maxStops, airlineSet, sortBy,
+            minConnectionMinutes, maxConnectionMinutes, stayMinDays, stayMaxDays, allowOvernightConnection,
+            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm
         );
 
         List<SearchResult> results = searchService.search(request);
@@ -132,12 +151,18 @@ public class WebController {
         model.addAttribute("qDepartureRangeEnd", departureRangeEnd);
         model.addAttribute("qReturnDate", returnDate);
         model.addAttribute("qReturnRangeEnd", returnRangeEnd);
-        model.addAttribute("qDirectOnly", directOnly);
         model.addAttribute("qMaxStops", maxStops);
         model.addAttribute("qAirlines", airlines);
         model.addAttribute("qSortBy", sortBy);
         model.addAttribute("qMinConnectionMinutes", minConnectionMinutes);
         model.addAttribute("qMaxConnectionMinutes", maxConnectionMinutes);
+        model.addAttribute("qStayMinDays", stayMinDays);
+        model.addAttribute("qStayMaxDays", stayMaxDays);
+        model.addAttribute("qAllowOvernightConnection", allowOvernightConnection);
+        model.addAttribute("qAllowReturnToDifferentAirport", allowReturnToDifferentAirport);
+        model.addAttribute("qAllowReturnFromDifferentAirport", allowReturnFromDifferentAirport);
+        model.addAttribute("qAllowGroundTransfer", allowGroundTransfer);
+        model.addAttribute("qGroundTransferRadiusKm", groundTransferRadiusKm);
 
         return "results";
     }

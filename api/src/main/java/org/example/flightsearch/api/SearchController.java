@@ -31,16 +31,23 @@ public class SearchController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate departureRangeEnd,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate returnDate,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate returnRangeEnd,
-        @RequestParam(defaultValue = "false") boolean directOnly,
         @RequestParam(defaultValue = "1") int maxStops,
         @RequestParam(required = false) Set<Airline> airlines,
         @RequestParam(defaultValue = "CHEAPEST") SearchRequest.SortBy sortBy,
         @RequestParam(required = false) Integer minConnectionMinutes,
-        @RequestParam(required = false) Integer maxConnectionMinutes
+        @RequestParam(required = false) Integer maxConnectionMinutes,
+        @RequestParam(required = false) Integer stayMinDays,
+        @RequestParam(required = false) Integer stayMaxDays,
+        @RequestParam(defaultValue = "false") boolean allowOvernightConnection,
+        @RequestParam(defaultValue = "false") boolean allowReturnToDifferentAirport,
+        @RequestParam(defaultValue = "false") boolean allowReturnFromDifferentAirport,
+        @RequestParam(defaultValue = "false") boolean allowGroundTransfer,
+        @RequestParam(required = false) Integer groundTransferRadiusKm
     ) {
         SearchRequest request = new SearchRequest(
-            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, directOnly, maxStops, airlines, sortBy,
-            minConnectionMinutes, maxConnectionMinutes
+            from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, maxStops, airlines, sortBy,
+            minConnectionMinutes, maxConnectionMinutes, stayMinDays, stayMaxDays, allowOvernightConnection,
+            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm
         );
         return searchService.search(request);
     }
