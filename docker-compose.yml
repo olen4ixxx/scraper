@@ -10,5 +10,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Falls back to the local postgres service above when these aren't set on
+      # the host - but picks up Neon automatically once SPRING_DATASOURCE_* are
+      # set (e.g. via the persistent `setx` vars), same as running bootRun directly.
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/flights}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-flights}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-flights}
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
