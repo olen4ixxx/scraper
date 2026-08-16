@@ -336,6 +336,80 @@
         .no-results p {
             color: #666;
         }
+
+        .leg {
+            border-top: 1px solid #eee;
+            padding-top: 12px;
+            margin-top: 12px;
+        }
+
+        .leg:first-of-type {
+            border-top: none;
+            padding-top: 0;
+            margin-top: 0;
+        }
+
+        .leg-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .leg-head .leg-label {
+            margin: 0;
+        }
+
+        /* Phones: the summary is the part that has to stay readable, so it stacks instead of
+           being squeezed into one line, and the expanded rows lose their fixed side-by-side
+           layout rather than overflowing. */
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+
+            .header,
+            .result-card {
+                padding: 14px;
+            }
+
+            .header h1 {
+                font-size: 19px;
+            }
+
+            .result-summary {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+
+            .summary-line {
+                white-space: normal;
+            }
+
+            .summary-price {
+                font-size: 18px;
+                min-width: 0;
+            }
+
+            .flight-details {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .time {
+                font-size: 17px;
+            }
+
+            .details-button {
+                width: 100%;
+            }
+
+            .segment-route,
+            .route {
+                font-size: 14px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -359,11 +433,11 @@
                 <div class="summary-lines">
                     <div class="summary-line">
                         <span class="summary-leg-label">There</span>
-                        <span th:text="${#temporals.format(result.departure, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.departure, 'HH:mm')} + ' ' + ${result.segments[0].fromCity} + ' ' + ${result.segments[0].fromAirport} + ' ' + ${#temporals.format(result.arrival, 'HH:mm')} + ' ' + ${result.segments[result.segments.size() - 1].toCity} + ' ' + ${result.segments[result.segments.size() - 1].toAirport} + ' ' + ${result.duration.toHours()} + ':' + ${#numbers.formatInteger(result.duration.toMinutes() % 60, 2)} + ' h / ' + ${result.numberOfStops == 0 ? 'no change' : result.numberOfStops + ' change' + (result.numberOfStops > 1 ? 's' : '')}">Tue 25/08/26 12:25 Poznan POZ 14:10 Brussels CRL 1:45 h / no change</span>
+                        <span th:text="${#temporals.format(result.departure, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.departure, 'HH:mm')} + ' ' + ${result.segments[0].fromCity} + ' ' + ${result.segments[0].fromAirport} + ' ' + ${#temporals.format(result.arrival, 'HH:mm')} + ' ' + ${result.segments[result.segments.size() - 1].toCity} + ' ' + ${result.segments[result.segments.size() - 1].toAirport} + ' ' + ${result.duration.toHours()} + ':' + ${#numbers.formatInteger(result.duration.toMinutes() % 60, 2)} + ' h / ' + ${result.numberOfStops == 0 ? 'direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Tue 25/08/26 12:25 Poznan POZ 14:10 Brussels CRL 1:45 h / direct</span>
                     </div>
                     <div class="summary-line" th:if="${result.roundTrip}">
                         <span class="summary-leg-label">Back</span>
-                        <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.returnDeparture, 'HH:mm')} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${#temporals.format(result.returnArrival, 'HH:mm')} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.returnDuration.toHours()} + ':' + ${#numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2)} + ' h / ' + ${result.returnNumberOfStops == 0 ? 'no change' : result.returnNumberOfStops + ' change' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / no change</span>
+                        <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.returnDeparture, 'HH:mm')} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${#temporals.format(result.returnArrival, 'HH:mm')} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.returnDuration.toHours()} + ':' + ${#numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2)} + ' h / ' + ${result.returnNumberOfStops == 0 ? 'direct' : result.returnNumberOfStops + ' stop' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / direct</span>
                     </div>
                 </div>
             </div>
@@ -372,35 +446,61 @@
             <div class="result-header">
                 <div>
                     <div class="price" th:text="${#numbers.formatDecimal(result.totalPrice, 1, 2)} + ' ' + ${result.currency}">€19.99</div>
-                    <span class="stops-badge" th:text="${result.numberOfStops == 0 ? 'Direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Direct</span>
                     <span th:if="${result.roundTrip}" class="roundtrip-badge">Round trip</span>
+                    <span class="airlines" th:text="${#strings.listJoin(result.airlines, ' + ')}">Ryanair</span>
                 </div>
             </div>
 
-            <div class="route" th:text="${result.segments[0].fromCity} + ' (' + ${result.segments[0].fromAirport} + ')' + ' → ' + ${result.segments[result.segments.size() - 1].toCity} + ' (' + ${result.segments[result.segments.size() - 1].toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
-            <div class="airlines" th:text="${#strings.listJoin(result.airlines, ' + ')}">Ryanair</div>
+            <div class="leg">
+                <div class="leg-head">
+                    <span class="leg-label" th:text="${result.roundTrip ? 'Outbound' : 'Flight'}">Outbound</span>
+                    <span class="stops-badge" th:text="${result.numberOfStops == 0 ? 'Direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Direct</span>
+                </div>
+                <div class="route" th:text="${result.segments[0].fromCity} + ' (' + ${result.segments[0].fromAirport} + ')' + ' → ' + ${result.segments[result.segments.size() - 1].toCity} + ' (' + ${result.segments[result.segments.size() - 1].toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
+                <div class="flight-details">
+                    <div>
+                        <div class="time" th:text="${#temporals.format(result.departure, 'HH:mm')}">06:20</div>
+                        <div class="date" th:text="${#temporals.format(result.departure, 'd MMM yyyy')}">15 Sep</div>
+                    </div>
 
-            <div class="leg-label" th:if="${result.roundTrip}">Outbound</div>
-            <div class="flight-details">
-                <div>
-                    <div class="time" th:text="${#temporals.format(result.departure, 'HH:mm')}">06:20</div>
-                    <div class="date" th:text="${#temporals.format(result.departure, 'd MMM yyyy')}">15 Sep</div>
+                    <div class="duration">
+                        <div th:text="${result.duration.toHours() + 'h ' + (result.duration.toMinutes() % 60) + 'm'}">1h 50m</div>
+                    </div>
+
+                    <div>
+                        <div class="time" th:text="${#temporals.format(result.arrival, 'HH:mm')}">08:10</div>
+                        <div class="date" th:text="${#temporals.format(result.arrival, 'd MMM yyyy')}">15 Sep</div>
+                    </div>
+
+                    <button class="details-button" onclick="toggleLegDetails(this)">Details</button>
                 </div>
 
-                <div class="duration">
-                    <div th:text="${result.duration.toHours() + 'h ' + (result.duration.toMinutes() % 60) + 'm'}">1h 50m</div>
-                </div>
+                <div class="segments">
+                    <div th:each="segment, stat : ${result.segments}" class="segment">
+                        <div class="segment-header">
+                            <span class="segment-airline" th:text="${segment.airline}">Ryanair</span>
+                            <span class="segment-price" th:text="${#numbers.formatDecimal(segment.price, 1, 2)} + ' ' + ${segment.currency}">€25.00</span>
+                        </div>
+                        <div class="segment-route" th:text="${segment.fromCity} + ' (' + ${segment.fromAirport} + ')' + ' → ' + ${segment.toCity} + ' (' + ${segment.toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
+                        <div class="segment-times">
+                            <span th:text="${#temporals.format(segment.departure, 'HH:mm')}">06:20</span>
+                            <span th:text="${#temporals.format(segment.arrival, 'HH:mm')}">08:10</span>
+                        </div>
+                        <div class="price-history" th:attr="data-flight-id=${segment.flightId}"></div>
+                    </div>
 
-                <div>
-                    <div class="time" th:text="${#temporals.format(result.arrival, 'HH:mm')}">08:10</div>
-                    <div class="date" th:text="${#temporals.format(result.arrival, 'd MMM yyyy')}">15 Sep</div>
+                    <div th:if="${result.numberOfStops > 0}" class="self-transfer">
+                        ⚠ Self-transfer (not protected)
+                    </div>
                 </div>
-
-                <button th:if="${!result.roundTrip}" class="details-button" onclick="toggleDetails(this)">Details</button>
             </div>
 
-            <div th:if="${result.roundTrip}">
-                <div class="leg-label">Return</div>
+            <div class="leg" th:if="${result.roundTrip}">
+                <div class="leg-head">
+                    <span class="leg-label">Return</span>
+                    <span class="stops-badge" th:text="${result.returnNumberOfStops == 0 ? 'Direct' : result.returnNumberOfStops + ' stop' + (result.returnNumberOfStops > 1 ? 's' : '')}">Direct</span>
+                </div>
+                <div class="route" th:text="${result.returnSegments[0].fromCity} + ' (' + ${result.returnSegments[0].fromAirport} + ')' + ' → ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' (' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ')'">Milan (BGY) → Warsaw (WAW)</div>
                 <div class="flight-details">
                     <div>
                         <div class="time" th:text="${#temporals.format(result.returnDeparture, 'HH:mm')}">18:20</div>
@@ -416,31 +516,10 @@
                         <div class="date" th:text="${#temporals.format(result.returnArrival, 'd MMM yyyy')}">20 Sep</div>
                     </div>
 
-                    <button class="details-button" onclick="toggleDetails(this)">Details</button>
-                </div>
-            </div>
-
-            <div class="segments">
-                <div class="leg-label" th:if="${result.roundTrip}">Outbound</div>
-                <div th:each="segment, stat : ${result.segments}" class="segment">
-                    <div class="segment-header">
-                        <span class="segment-airline" th:text="${segment.airline}">Ryanair</span>
-                        <span class="segment-price" th:text="${#numbers.formatDecimal(segment.price, 1, 2)} + ' ' + ${segment.currency}">€25.00</span>
-                    </div>
-                    <div class="segment-route" th:text="${segment.fromCity} + ' (' + ${segment.fromAirport} + ')' + ' → ' + ${segment.toCity} + ' (' + ${segment.toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
-                    <div class="segment-times">
-                        <span th:text="${#temporals.format(segment.departure, 'HH:mm')}">06:20</span>
-                        <span th:text="${#temporals.format(segment.arrival, 'HH:mm')}">08:10</span>
-                    </div>
-                    <div class="price-history" th:attr="data-flight-id=${segment.flightId}"></div>
+                    <button class="details-button" onclick="toggleLegDetails(this)">Details</button>
                 </div>
 
-                <div th:if="${result.numberOfStops > 0}" class="self-transfer">
-                    ⚠ Self-transfer (not protected)
-                </div>
-
-                <div th:if="${result.roundTrip}">
-                    <div class="leg-label">Return</div>
+                <div class="segments">
                     <div th:each="segment, stat : ${result.returnSegments}" class="segment">
                         <div class="segment-header">
                             <span class="segment-airline" th:text="${segment.airline}">Ryanair</span>
@@ -468,9 +547,11 @@
             summary.closest('.result-card').classList.toggle('expanded');
         }
 
-        function toggleDetails(button) {
-            const card = button.closest('.result-card');
-            const segments = card.querySelector('.segments');
+        // Scoped to the leg the button sits in, so opening the outbound's segments doesn't
+        // also open the return's.
+        function toggleLegDetails(button) {
+            const leg = button.closest('.leg');
+            const segments = leg.querySelector('.segments');
             segments.classList.toggle('show');
             button.textContent = segments.classList.contains('show') ? 'Hide' : 'Details';
             if (segments.classList.contains('show')) {

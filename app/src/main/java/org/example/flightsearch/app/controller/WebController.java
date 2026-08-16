@@ -69,6 +69,7 @@ public class WebController {
         Model model
     ) {
         model.addAttribute("destinations", airportRepository.findDestinationsFrom(PolandAirports.ALL));
+        model.addAttribute("availableAirlines", routeRepository.findAirlinesWithFlights());
 
         // Non-null only when arriving here via the results page's "Back to search" link -
         // lets the form re-populate itself instead of resetting to defaults. Dates go over

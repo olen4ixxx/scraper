@@ -2,6 +2,7 @@ package org.example.flightsearch.app.config;
 
 import org.example.flightsearch.collector.AirlineCollector;
 import org.example.flightsearch.collector.ryanair.RyanairCollector;
+import org.example.flightsearch.collector.vueling.VuelingCollector;
 import org.example.flightsearch.collector.wizz.WizzCollector;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.springframework.context.annotation.Bean;
@@ -14,10 +15,11 @@ import java.util.List;
 public class CollectorConfig {
 
     @Bean
-    public List<AirlineCollector> collectors(WebClient webClient) {
+    public List<AirlineCollector> collectors(WebClient webClient, AirportResolver airportResolver) {
         return List.of(
             new WizzCollector(webClient),
-            new RyanairCollector(webClient)
+            new RyanairCollector(webClient),
+            new VuelingCollector(webClient, airportResolver)
         );
     }
 

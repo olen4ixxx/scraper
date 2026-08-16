@@ -23,6 +23,7 @@ include(
     "collector",
     "collector-wizz",
     "collector-ryanair",
+    "collector-vueling",
     "search",
     "api"
 )

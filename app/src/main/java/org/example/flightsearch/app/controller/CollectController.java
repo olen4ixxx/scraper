@@ -32,6 +32,12 @@ public class CollectController {
         return ResponseEntity.ok("Ryanair collection started");
     }
     
+    @PostMapping("/vueling")
+    public ResponseEntity<String> collectVueling() {
+        collectionService.collectAirline(Airline.VUELING);
+        return ResponseEntity.ok("Vueling collection started");
+    }
+
     @PostMapping("/all")
     public ResponseEntity<String> collectAll() {
         collectionService.collectAll();

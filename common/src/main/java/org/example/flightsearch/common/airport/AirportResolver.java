@@ -8,8 +8,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,6 +33,14 @@ public class AirportResolver {
             return Optional.empty();
         }
         return Optional.ofNullable(byIata.get(iata.toUpperCase()));
+    }
+
+    /**
+     * Every code in the reference dataset. Airlines that publish no route list of their own
+     * have to be asked about specific airports, and this is the candidate set to ask about.
+     */
+    public Set<String> knownIataCodes() {
+        return Collections.unmodifiableSet(byIata.keySet());
     }
 
     private static Map<String, Airport> load() {

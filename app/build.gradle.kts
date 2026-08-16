@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":collector"))
     implementation(project(":collector-wizz"))
     implementation(project(":collector-ryanair"))
+    implementation(project(":collector-vueling"))
     implementation(project(":search"))
     implementation(project(":api"))
     

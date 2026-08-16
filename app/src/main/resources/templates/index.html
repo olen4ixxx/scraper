@@ -167,6 +167,167 @@
             font-size: 12px;
             color: #999;
         }
+
+        .daterange {
+            position: relative;
+        }
+
+        input.daterange-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+            cursor: pointer;
+        }
+
+        input.daterange-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .calendar {
+            display: none;
+            position: absolute;
+            z-index: 40;
+            top: calc(100% + 4px);
+            left: 0;
+            width: 280px;
+            max-width: 92vw;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            padding: 10px;
+        }
+
+        .calendar.open {
+            display: block;
+        }
+
+        .calendar-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .calendar-month {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .calendar-nav {
+            background: none;
+            border: none;
+            font-size: 18px;
+            line-height: 1;
+            color: #667eea;
+            cursor: pointer;
+            padding: 2px 8px;
+        }
+
+        .calendar-nav:disabled {
+            color: #ccc;
+            cursor: default;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+
+        .calendar-dow {
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+            padding: 2px 0;
+        }
+
+        .calendar-day {
+            border: none;
+            background: none;
+            padding: 7px 0;
+            font-size: 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #333;
+        }
+
+        .calendar-day:hover:not(:disabled) {
+            background: #eef0fd;
+        }
+
+        .calendar-day:disabled {
+            color: #ccc;
+            cursor: default;
+        }
+
+        .calendar-day.in-range {
+            background: #eef0fd;
+            border-radius: 0;
+        }
+
+        .calendar-day.selected {
+            background: #667eea;
+            color: white;
+        }
+
+        .calendar-day.blank {
+            visibility: hidden;
+        }
+
+        .calendar-hint {
+            font-size: 11px;
+            color: #999;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        /* Phones: the form is a single column, and controls get big enough to tap. */
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 18px;
+            }
+
+            h1 {
+                font-size: 22px;
+                margin-bottom: 20px;
+            }
+
+            .row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .conn-window {
+                gap: 12px;
+            }
+
+            .airline-checkboxes {
+                flex-wrap: wrap;
+                gap: 12px 20px;
+            }
+
+            .calendar {
+                width: 100%;
+            }
+
+            .calendar-day {
+                padding: 10px 0;
+            }
+
+            select, input[type="date"], input[type="text"], input.daterange-input {
+                font-size: 16px; /* keeps iOS from zooming in on focus */
+            }
+        }
         
         .search-button {
             width: 100%;
@@ -379,25 +540,32 @@
                 <div id="toSuggestions" class="suggestions"></div>
             </div>
             
+            <!-- One field per direction rather than a start box and an end box: picking a
+                 range is two clicks on the same calendar, and a single date is just a range
+                 that starts and ends on the same day. -->
             <div class="row">
                 <div class="form-group">
-                    <label for="departure">Departure</label>
-                    <input type="date" id="departure" name="departure" required>
+                    <label for="departureRangeInput">Departure</label>
+                    <div class="daterange" id="departureRange">
+                        <input type="text" id="departureRangeInput" class="daterange-input" readonly
+                               placeholder="Pick a day or a range" autocomplete="off">
+                        <input type="hidden" id="departure" name="departure" required>
+                        <input type="hidden" id="departureRangeEnd" name="departureRangeEnd">
+                        <div class="calendar"></div>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label for="departureRangeEnd">...through (optional range)</label>
-                    <input type="date" id="departureRangeEnd" name="departureRangeEnd">
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="form-group">
-                    <label for="returnDate">Return (optional)</label>
-                    <input type="date" id="returnDate" name="returnDate">
-                </div>
-                <div class="form-group">
-                    <label for="returnRangeEnd">...through (optional range)</label>
-                    <input type="date" id="returnRangeEnd" name="returnRangeEnd">
+                    <div class="label-row">
+                        <label for="returnRangeInput">Return (optional)</label>
+                        <button type="button" id="returnClear" class="clear-all-btn" style="display:none;">Clear</button>
+                    </div>
+                    <div class="daterange" id="returnRange">
+                        <input type="text" id="returnRangeInput" class="daterange-input" readonly
+                               placeholder="One way" autocomplete="off">
+                        <input type="hidden" id="returnDate" name="returnDate">
+                        <input type="hidden" id="returnRangeEnd" name="returnRangeEnd">
+                        <div class="calendar"></div>
+                    </div>
                 </div>
             </div>
 
@@ -487,14 +655,14 @@
 
             <div class="form-group">
                 <label>Airlines</label>
+                <!-- Built from the airlines actually present in the database, so an airline
+                     starts being filterable as soon as its first flights are collected -
+                     by this application or by anything else writing to the same schema. -->
                 <div class="airline-checkboxes">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="ryanair" name="airlines" value="RYANAIR" checked>
-                        <label for="ryanair">Ryanair</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="wizzair" name="airlines" value="WIZZAIR" checked>
-                        <label for="wizzair">Wizz Air</label>
+                    <div class="checkbox-group" th:each="airline : ${availableAirlines}">
+                        <input type="checkbox" name="airlines" class="airline-checkbox"
+                               th:id="${'airline-' + airline}" th:value="${airline}" checked>
+                        <label th:for="${'airline-' + airline}" th:text="${airline}">Ryanair</label>
                     </div>
                 </div>
             </div>
@@ -851,17 +1019,12 @@
         }
         renderChips();
 
-        // Repopulate the rest of the form from the previous search, if any.
-        const today = new Date().toISOString().split('T')[0];
+        // Repopulate the rest of the form from the previous search, if any. The date fields
+        // are handled by the range pickers set up at the end of this block.
         const fromEl = document.getElementById('from');
-        const departureEl = document.getElementById('departure');
-        const departureRangeEndEl = document.getElementById('departureRangeEnd');
-        const returnDateEl = document.getElementById('returnDate');
-        const returnRangeEndEl = document.getElementById('returnRangeEnd');
         const maxStopsEl = document.getElementById('maxStops');
         const sortByEl = document.getElementById('sortBy');
-        const ryanairEl = document.getElementById('ryanair');
-        const wizzairEl = document.getElementById('wizzair');
+        const airlineEls = Array.prototype.slice.call(document.querySelectorAll('.airline-checkbox'));
 
         // "From" is a fixed list of Polish airports, but the search itself accepts any
         // comma-separated set of places on either side - so anything the list doesn't already
@@ -882,16 +1045,12 @@
         if (PREFILL.from) setFrom(PREFILL.from, PREFILL.from.split(',').map(function(t) {
             return tokenToSelection(t.trim()).label;
         }).join(', '));
-        departureEl.value = PREFILL.departure || today;
-        departureEl.min = today;
-        if (PREFILL.departureRangeEnd) departureRangeEndEl.value = PREFILL.departureRangeEnd;
-        if (PREFILL.returnDate) returnDateEl.value = PREFILL.returnDate;
-        if (PREFILL.returnRangeEnd) returnRangeEndEl.value = PREFILL.returnRangeEnd;
         if (PREFILL.maxStops !== null && PREFILL.maxStops !== undefined) maxStopsEl.value = String(PREFILL.maxStops);
         if (PREFILL.sortBy) sortByEl.value = PREFILL.sortBy;
         if (PREFILL.airlines) {
-            ryanairEl.checked = PREFILL.airlines.indexOf('RYANAIR') !== -1;
-            wizzairEl.checked = PREFILL.airlines.indexOf('WIZZAIR') !== -1;
+            airlineEls.forEach(function(el) {
+                el.checked = PREFILL.airlines.indexOf(el.value) !== -1;
+            });
         }
 
         // Connection window: hours+minutes for both bounds, plus a separate "days" override
@@ -1002,14 +1161,204 @@
             setFrom(newFromValue, newFromLabel);
         });
 
-        function syncMins() {
-            departureRangeEndEl.min = departureEl.value || today;
-            returnDateEl.min = departureEl.value || today;
-            returnRangeEndEl.min = returnDateEl.value || departureEl.value || today;
+        /**
+         * A month calendar behind a single read-only field. The first click picks the start
+         * and the second the end, so a range is two clicks in one place rather than two
+         * separate date boxes; picking the same day twice is how you say "just this day".
+         * The visible field is only ever a label - the two hidden inputs it writes are what
+         * the form actually submits, so the server side is unchanged.
+         */
+        function createDateRange(options) {
+            const root = document.getElementById(options.rootId);
+            const display = root.querySelector('.daterange-input');
+            const calendar = root.querySelector('.calendar');
+            const startInput = document.getElementById(options.startId);
+            const endInput = document.getElementById(options.endId);
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+
+            let start = null;
+            let end = null;
+            let viewMonth = null;
+            let awaitingEnd = false;
+
+            function toIso(d) {
+                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+            }
+            function pad(n) { return n < 10 ? '0' + n : String(n); }
+            function fromIso(s) {
+                const parts = s.split('-');
+                return new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            }
+            function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+            function sameDay(a, b) { return a && b && toIso(a) === toIso(b); }
+            function formatShort(d) {
+                return d.getDate() + ' ' + monthNames[d.getMonth()].substring(0, 3);
+            }
+
+            function minDate() {
+                const floor = options.minDate ? options.minDate() : null;
+                const todayDate = startOfDay(new Date());
+                return floor && floor > todayDate ? floor : todayDate;
+            }
+
+            function render() {
+                if (!viewMonth) {
+                    viewMonth = new Date((start || minDate()).getFullYear(), (start || minDate()).getMonth(), 1);
+                }
+                const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+                const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+                // Monday-first, matching how European calendars read.
+                const leading = (first.getDay() + 6) % 7;
+                const floor = minDate();
+
+                let html = '<div class="calendar-head">'
+                    + '<button type="button" class="calendar-nav" data-nav="-1">‹</button>'
+                    + '<span class="calendar-month">' + monthNames[viewMonth.getMonth()] + ' ' + viewMonth.getFullYear() + '</span>'
+                    + '<button type="button" class="calendar-nav" data-nav="1">›</button>'
+                    + '</div><div class="calendar-grid">';
+                ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(function(d) {
+                    html += '<div class="calendar-dow">' + d + '</div>';
+                });
+                for (let i = 0; i < leading; i++) {
+                    html += '<button type="button" class="calendar-day blank" disabled></button>';
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
+                    const iso = toIso(date);
+                    const disabled = date < floor;
+                    const isEdge = sameDay(date, start) || sameDay(date, end);
+                    const inRange = start && end && date > start && date < end;
+                    html += '<button type="button" class="calendar-day'
+                        + (isEdge ? ' selected' : '') + (inRange ? ' in-range' : '') + '"'
+                        + (disabled ? ' disabled' : '') + ' data-date="' + iso + '">' + day + '</button>';
+                }
+                html += '</div><div class="calendar-hint">'
+                    + (awaitingEnd ? 'Pick the last day, or the same day again' : 'Pick a day, then another for a range')
+                    + '</div>';
+                calendar.innerHTML = html;
+            }
+
+            function syncOut() {
+                startInput.value = start ? toIso(start) : '';
+                // A single day is submitted as a start with no end, which is what the server
+                // already treats as "just this date".
+                endInput.value = end && !sameDay(start, end) ? toIso(end) : '';
+
+                if (!start) {
+                    display.value = '';
+                } else if (!end || sameDay(start, end)) {
+                    display.value = formatShort(start) + ' ' + start.getFullYear();
+                } else {
+                    display.value = formatShort(start) + ' – ' + formatShort(end) + ' ' + end.getFullYear();
+                }
+                if (options.onChange) options.onChange();
+            }
+
+            function open() {
+                document.querySelectorAll('.calendar.open').forEach(function(c) {
+                    if (c !== calendar) c.classList.remove('open');
+                });
+                viewMonth = new Date((start || minDate()).getFullYear(), (start || minDate()).getMonth(), 1);
+                render();
+                calendar.classList.add('open');
+            }
+
+            function close() {
+                calendar.classList.remove('open');
+                awaitingEnd = false;
+            }
+
+            display.addEventListener('click', function(e) {
+                e.stopPropagation();
+                calendar.classList.contains('open') ? close() : open();
+            });
+
+            calendar.addEventListener('click', function(e) {
+                // Picking a day re-renders the grid, which detaches the very button that was
+                // clicked - so by the time the click reaches the document-level "clicked
+                // outside" handler, the target is no longer inside this widget and the range
+                // would be closed and reset halfway through. Keeping the click here avoids it.
+                e.stopPropagation();
+
+                const nav = e.target.closest('[data-nav]');
+                if (nav) {
+                    viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + Number(nav.dataset.nav), 1);
+                    render();
+                    return;
+                }
+                const dayButton = e.target.closest('[data-date]');
+                if (!dayButton || dayButton.disabled) {
+                    return;
+                }
+                const picked = fromIso(dayButton.dataset.date);
+                if (!awaitingEnd) {
+                    start = picked;
+                    end = null;
+                    awaitingEnd = true;
+                    render();
+                    syncOut();
+                    return;
+                }
+                // A second pick before the first restarts the range rather than inverting it.
+                if (picked < start) {
+                    start = picked;
+                    render();
+                    syncOut();
+                    return;
+                }
+                end = picked;
+                awaitingEnd = false;
+                render();
+                syncOut();
+                close();
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('#' + options.rootId)) close();
+            });
+
+            return {
+                startDate: function() { return start; },
+                set: function(startIso, endIso) {
+                    start = startIso ? fromIso(startIso) : null;
+                    end = endIso ? fromIso(endIso) : null;
+                    awaitingEnd = false;
+                    syncOut();
+                },
+                clear: function() {
+                    start = null;
+                    end = null;
+                    awaitingEnd = false;
+                    syncOut();
+                }
+            };
         }
-        departureEl.addEventListener('change', syncMins);
-        returnDateEl.addEventListener('change', syncMins);
-        syncMins();
+
+        const returnRange = createDateRange({
+            rootId: 'returnRange',
+            startId: 'returnDate',
+            endId: 'returnRangeEnd',
+            // Coming back before leaving is not a trip anyone can take.
+            minDate: function() { return departureRange ? departureRange.startDate() : null; },
+            onChange: function() {
+                document.getElementById('returnClear').style.display =
+                    document.getElementById('returnDate').value ? 'inline' : 'none';
+            }
+        });
+
+        const departureRange = createDateRange({
+            rootId: 'departureRange',
+            startId: 'departure',
+            endId: 'departureRangeEnd'
+        });
+
+        departureRange.set(PREFILL.departure || new Date().toISOString().split('T')[0], PREFILL.departureRangeEnd);
+        returnRange.set(PREFILL.returnDate, PREFILL.returnRangeEnd);
+
+        document.getElementById('returnClear').addEventListener('click', function() {
+            returnRange.clear();
+        });
     })();
     </script>
 </body>
