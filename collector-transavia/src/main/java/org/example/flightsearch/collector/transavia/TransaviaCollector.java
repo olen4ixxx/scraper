@@ -10,6 +10,7 @@ import org.example.flightsearch.common.model.Airline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -110,7 +111,27 @@ public class TransaviaCollector implements AirlineCollector {
         return response != null && response.isArray() && !response.isEmpty();
     }
 
+    /**
+     * A pair they don't fly answers 404 with {@code {"error":"Invalid route"}}, which is a real
+     * answer. Anything else - the occasional 403, a timeout - is the request failing rather
+     * than the route being absent, and treating those alike would quietly erase real routes
+     * from the network. Those get one retry before being given up on.
+     */
     private JsonNode requestFares(String origin, String destination) {
+        try {
+            return attemptFares(origin, destination);
+        } catch (TransientFailure firstAttempt) {
+            logger.debug("Retrying Transavia {} -> {} after {}", origin, destination, firstAttempt.getMessage());
+        }
+        try {
+            return attemptFares(origin, destination);
+        } catch (TransientFailure retry) {
+            logger.debug("Giving up on Transavia {} -> {}: {}", origin, destination, retry.getMessage());
+            return null;
+        }
+    }
+
+    private JsonNode attemptFares(String origin, String destination) throws TransientFailure {
         YearMonth from = YearMonth.from(LocalDate.now());
         YearMonth to = from.plusMonths(MONTHS_AHEAD - 1L);
         String url = String.format("%s?dr=%s/%s&ac=1&cc=0&ic=0&ds=%s&as=%s&lf=Monetary",
@@ -124,9 +145,17 @@ public class TransaviaCollector implements AirlineCollector {
                 .bodyToMono(String.class)
                 .block();
             return mapper.readTree(json);
-        } catch (Exception e) {
-            logger.debug("No Transavia fares for {} -> {}: {}", origin, destination, e.getMessage());
+        } catch (WebClientResponseException.NotFound e) {
             return null;
+        } catch (Exception e) {
+            throw new TransientFailure(e.getMessage());
+        }
+    }
+
+    /** The request failed, which is not the same answer as "they don't fly this". */
+    private static final class TransientFailure extends Exception {
+        TransientFailure(String message) {
+            super(message);
         }
     }
 

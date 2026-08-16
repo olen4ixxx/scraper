@@ -25,6 +25,7 @@ include(
     "collector-ryanair",
     "collector-vueling",
     "collector-transavia",
+    "collector-volotea",
     "search",
     "api"
 )
