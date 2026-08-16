@@ -8,6 +8,7 @@ import org.example.flightsearch.db.repository.AirportRepository;
 import org.example.flightsearch.db.repository.FlightRepository;
 import org.example.flightsearch.db.repository.PriceSnapshotRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
+import org.example.flightsearch.app.service.SearchFormOptions;
 import org.example.flightsearch.search.FlightSearchService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.stereotype.Controller;
@@ -31,19 +32,22 @@ public class WebController {
     private final RouteRepository routeRepository;
     private final FlightRepository flightRepository;
     private final PriceSnapshotRepository priceSnapshotRepository;
-    
+    private final SearchFormOptions formOptions;
+
     public WebController(
         FlightSearchService searchService,
         AirportRepository airportRepository,
         RouteRepository routeRepository,
         FlightRepository flightRepository,
-        PriceSnapshotRepository priceSnapshotRepository
+        PriceSnapshotRepository priceSnapshotRepository,
+        SearchFormOptions formOptions
     ) {
         this.searchService = searchService;
         this.airportRepository = airportRepository;
         this.routeRepository = routeRepository;
         this.flightRepository = flightRepository;
         this.priceSnapshotRepository = priceSnapshotRepository;
+        this.formOptions = formOptions;
     }
     
     @GetMapping("/")
@@ -69,8 +73,8 @@ public class WebController {
         @RequestParam(required = false) Boolean schengenConnectionsOnly,
         Model model
     ) {
-        model.addAttribute("destinations", airportRepository.findDestinationsFrom(PolandAirports.ALL));
-        model.addAttribute("availableAirlines", routeRepository.findAirlinesWithFlights());
+        model.addAttribute("destinations", formOptions.destinations());
+        model.addAttribute("availableAirlines", formOptions.airlines());
 
         // Non-null only when arriving here via the results page's "Back to search" link -
         // lets the form re-populate itself instead of resetting to defaults. Dates go over

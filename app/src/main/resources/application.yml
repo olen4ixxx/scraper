@@ -19,6 +19,12 @@ spring:
 server:
   # Hosting platforms assign the port at runtime and expect the app to bind to it.
   port: ${PORT:8080}
+  # A results page is mostly repeated markup - five hundred cards of the same shape, four
+  # fifths of it detail blocks nobody has opened yet - which is exactly what compresses well.
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,application/json
+    min-response-size: 2KB
 
 logging:
   level:
