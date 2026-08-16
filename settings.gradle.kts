@@ -24,6 +24,7 @@ include(
     "collector-wizz",
     "collector-ryanair",
     "collector-vueling",
+    "collector-transavia",
     "search",
     "api"
 )

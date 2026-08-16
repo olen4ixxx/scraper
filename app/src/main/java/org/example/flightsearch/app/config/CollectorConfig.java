@@ -2,6 +2,7 @@ package org.example.flightsearch.app.config;
 
 import org.example.flightsearch.collector.AirlineCollector;
 import org.example.flightsearch.collector.ryanair.RyanairCollector;
+import org.example.flightsearch.collector.transavia.TransaviaCollector;
 import org.example.flightsearch.collector.vueling.VuelingCollector;
 import org.example.flightsearch.collector.wizz.WizzCollector;
 import org.example.flightsearch.common.airport.AirportResolver;
@@ -19,7 +20,8 @@ public class CollectorConfig {
         return List.of(
             new WizzCollector(webClient),
             new RyanairCollector(webClient),
-            new VuelingCollector(webClient, airportResolver)
+            new VuelingCollector(webClient, airportResolver),
+            new TransaviaCollector(webClient, airportResolver)
         );
     }
 

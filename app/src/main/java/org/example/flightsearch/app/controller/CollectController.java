@@ -38,6 +38,12 @@ public class CollectController {
         return ResponseEntity.ok("Vueling collection started");
     }
 
+    @PostMapping("/transavia")
+    public ResponseEntity<String> collectTransavia() {
+        collectionService.collectAirline(Airline.TRANSAVIA);
+        return ResponseEntity.ok("Transavia collection started");
+    }
+
     @PostMapping("/all")
     public ResponseEntity<String> collectAll() {
         collectionService.collectAll();
