@@ -112,6 +112,31 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
     }
 
+    /**
+     * The route and airport tables are reloaded at most this often rather than on every
+     * search. They only change while collection is running - which the instance serving the
+     * site doesn't do at all - but a search that matched nothing still spent 240ms of its
+     * 325 loading six thousand routes to answer with an empty list. On the hosted instance,
+     * with a fraction of a CPU to map those rows, the same work took seconds.
+     */
+    private static final Duration CONTEXT_TTL = Duration.ofMinutes(5);
+
+    private volatile CachedContext cachedContext;
+
+    private record CachedContext(SearchContext context, Instant builtAt) {}
+
+    private SearchContext context() {
+        CachedContext current = cachedContext;
+        if (current != null && Duration.between(current.builtAt(), Instant.now()).compareTo(CONTEXT_TTL) < 0) {
+            return current.context();
+        }
+        // Two searches arriving together may both rebuild; they produce the same thing, and
+        // paying for it twice occasionally is cheaper than making every search wait on a lock.
+        SearchContext rebuilt = buildContext();
+        cachedContext = new CachedContext(rebuilt, Instant.now());
+        return rebuilt;
+    }
+
     private SearchContext buildContext() {
         Map<Long, RouteEntity> routesById = new HashMap<>();
         routeRepository.findAll().forEach(r -> routesById.put(r.id(), r));
@@ -129,7 +154,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             request.from(), request.to(), request.departure(), request.departureRangeEnd(),
             request.returnDate(), request.returnRangeEnd(), request.maxStops());
 
-        SearchContext ctx = buildContext();
+        SearchContext ctx = context();
         Set<String> fromAirports = resolveAirports(request.from());
         boolean anywhere = isAnywhere(request.to());
         List<LocalDate> departureDates = dateRange(request.departure(), request.departureRangeEnd());
