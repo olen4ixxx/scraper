@@ -103,9 +103,13 @@ jobs:
 
           exit $COLLECT_STATUS
 
-      - name: Upload app log on failure
-        if: failure()
+      # Kept for successful runs too: a run that finishes cleanly having collected
+      # nothing looks identical to a healthy one from the outside, and the log is
+      # the only way to tell which it was.
+      - name: Upload app log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: app-run-log-${{ matrix.airline }}
           path: app-run.log
+          retention-days: 7

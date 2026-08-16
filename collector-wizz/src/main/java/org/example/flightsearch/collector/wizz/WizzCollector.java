@@ -177,6 +177,12 @@ public class WizzCollector implements AirlineCollector {
                 if (dayText == null || price.isMissingNode() || price.isNull()) {
                     continue;
                 }
+                // Days without a flight come back as entries too, marked "noData" and carrying
+                // an amount of zero. Taken at face value they read as free flights, which is
+                // how 1,692 fares of nothing reached the database on the first run.
+                if (!"price".equals(fare.path("priceType").asText()) || price.path("amount").asDouble() <= 0) {
+                    continue;
+                }
                 LocalDate day = LocalDate.parse(dayText.substring(0, 10));
                 if (day.isBefore(today) || day.isAfter(horizon)) {
                     continue;
