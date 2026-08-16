@@ -42,3 +42,5 @@ build/
 .idea/
 .gradle/
 .claude/
+# Parallel work in this repo that isn't mine to commit
+api/src/main/java/org/example/flightsearch/api/MetadataController.java
