@@ -11,6 +11,12 @@ services:
     autoDeploy: true
     branch: main
     envVars:
+      # Named explicitly rather than left to the platform to assign: a deploy failed with
+      # "no open ports detected" and no output from the application at all, and the one
+      # thing that can silently differ between what the app listens on and what the
+      # platform scans is this. Fixing it removes that possibility from the list.
+      - key: PORT
+        value: 10000
       # Read-only instance: it serves the site, while collection stays in the scheduled
       # GitHub Actions run. Without this a public deployment would scrape on its own timer,
       # from a second IP, and expose /collect to anyone who found the URL.
