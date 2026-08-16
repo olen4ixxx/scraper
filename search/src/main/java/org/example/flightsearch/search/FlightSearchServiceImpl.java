@@ -5,6 +5,7 @@ import org.example.flightsearch.common.dto.SearchRequest;
 import org.example.flightsearch.common.dto.SearchResult;
 import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.common.model.PolandAirports;
+import org.example.flightsearch.common.model.Schengen;
 import org.example.flightsearch.db.entity.AirportEntity;
 import org.example.flightsearch.db.entity.FlightWithPrice;
 import org.example.flightsearch.db.entity.PriceSnapshotEntity;
@@ -297,12 +298,17 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
             for (SearchResult outbound : group) {
                 LocalDate outboundDate = outbound.departure().toLocalDate();
+                // Time at the destination runs from landing, not from leaving home: an outbound
+                // that lands the next day after an overnight connection spends that day in
+                // transit. SearchResult.stayDays() counts it the same way, so what a card shows
+                // is what this filtered on.
+                LocalDate arrivalDate = outbound.arrival().toLocalDate();
                 for (SearchResult ret : returnResults) {
                     LocalDate returnDate = ret.departure().toLocalDate();
-                    if (returnDate.isBefore(outboundDate)) {
+                    if (returnDate.isBefore(arrivalDate)) {
                         continue;
                     }
-                    long stayDays = ChronoUnit.DAYS.between(outboundDate, returnDate);
+                    long stayDays = ChronoUnit.DAYS.between(arrivalDate, returnDate);
                     if (request.stayMinDays() != null && stayDays < request.stayMinDays()) {
                         continue;
                     }
@@ -461,6 +467,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> firstLegsByConnection = groupByConnectionAirport(fromFlights, ctx);
+        if (request.schengenConnectionsOnly()) {
+            firstLegsByConnection.keySet().removeIf(airport -> !isSchengen(airport, ctx));
+        }
         if (firstLegsByConnection.isEmpty()) {
             return List.of();
         }
@@ -549,9 +558,20 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
         double radiusKm = request.groundTransferRadiusKm() != null ? request.groundTransferRadiusKm() : 100;
         for (String airport : connectionAirports) {
-            result.put(airport, nearbyAirports(airport, radiusKm, ctx));
+            Set<String> nearby = nearbyAirports(airport, radiusKm, ctx);
+            if (request.schengenConnectionsOnly()) {
+                // Crossing to a nearby airport still means being there, so it has to be
+                // somewhere the same visa covers - a hundred kilometres can cross a border.
+                nearby.removeIf(candidate -> !isSchengen(candidate, ctx));
+            }
+            result.put(airport, nearby);
         }
         return result;
+    }
+
+    private boolean isSchengen(String iata, SearchContext ctx) {
+        AirportEntity airport = ctx.airportsByIata().get(iata);
+        return airport != null && Schengen.includes(airport.country());
     }
 
     private Set<String> nearbyAirports(String iata, double radiusKm, SearchContext ctx) {

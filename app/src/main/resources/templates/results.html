@@ -337,6 +337,17 @@
             color: #666;
         }
 
+        .stay-badge {
+            background: #eef0fd;
+            color: #3949ab;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 6px;
+            white-space: nowrap;
+        }
+
         .leg {
             border-top: 1px solid #eee;
             padding-top: 12px;
@@ -414,7 +425,7 @@
 </head>
 <body>
     <div class="container">
-        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy}, minConnectionMinutes=${qMinConnectionMinutes}, maxConnectionMinutes=${qMaxConnectionMinutes}, stayMinDays=${qStayMinDays}, stayMaxDays=${qStayMaxDays}, allowOvernightConnection=${qAllowOvernightConnection}, allowReturnToDifferentAirport=${qAllowReturnToDifferentAirport}, allowReturnFromDifferentAirport=${qAllowReturnFromDifferentAirport}, allowGroundTransfer=${qAllowGroundTransfer}, groundTransferRadiusKm=${qGroundTransferRadiusKm})}" class="back-link">← Back to search</a>
+        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy}, minConnectionMinutes=${qMinConnectionMinutes}, maxConnectionMinutes=${qMaxConnectionMinutes}, stayMinDays=${qStayMinDays}, stayMaxDays=${qStayMaxDays}, allowOvernightConnection=${qAllowOvernightConnection}, allowReturnToDifferentAirport=${qAllowReturnToDifferentAirport}, allowReturnFromDifferentAirport=${qAllowReturnFromDifferentAirport}, allowGroundTransfer=${qAllowGroundTransfer}, groundTransferRadiusKm=${qGroundTransferRadiusKm}, schengenConnectionsOnly=${qSchengenConnectionsOnly})}" class="back-link">← Back to search</a>
         
         <div class="header">
             <h1 th:text="${from} + ' → ' + ${to}">Warsaw → Anywhere</h1>
@@ -437,6 +448,7 @@
                     </div>
                     <div class="summary-line" th:if="${result.roundTrip}">
                         <span class="summary-leg-label">Back</span>
+                        <span class="stay-badge" th:text="${result.stayDays} + (result.stayDays == 1 ? ' day' : ' days')">5 days</span>
                         <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.returnDeparture, 'HH:mm')} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${#temporals.format(result.returnArrival, 'HH:mm')} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.returnDuration.toHours()} + ':' + ${#numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2)} + ' h / ' + ${result.returnNumberOfStops == 0 ? 'direct' : result.returnNumberOfStops + ' stop' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / direct</span>
                     </div>
                 </div>
@@ -447,6 +459,8 @@
                 <div>
                     <div class="price" th:text="${#numbers.formatDecimal(result.totalPrice, 1, 2)} + ' ' + ${result.currency}">€19.99</div>
                     <span th:if="${result.roundTrip}" class="roundtrip-badge">Round trip</span>
+                    <span th:if="${result.roundTrip}" class="stay-badge"
+                          th:text="'Length of stay: ' + ${result.stayDays} + (result.stayDays == 1 ? ' day' : ' days')">Length of stay: 5 days</span>
                     <span class="airlines" th:text="${#strings.listJoin(result.airlines, ' + ')}">Ryanair</span>
                 </div>
             </div>

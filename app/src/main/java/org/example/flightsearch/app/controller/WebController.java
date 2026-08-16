@@ -66,6 +66,7 @@ public class WebController {
         @RequestParam(required = false) Boolean allowReturnFromDifferentAirport,
         @RequestParam(required = false) Boolean allowGroundTransfer,
         @RequestParam(required = false) Integer groundTransferRadiusKm,
+        @RequestParam(required = false) Boolean schengenConnectionsOnly,
         Model model
     ) {
         model.addAttribute("destinations", airportRepository.findDestinationsFrom(PolandAirports.ALL));
@@ -93,6 +94,10 @@ public class WebController {
         model.addAttribute("prefillAllowReturnFromDifferentAirport", allowReturnFromDifferentAirport != null && allowReturnFromDifferentAirport);
         model.addAttribute("prefillAllowGroundTransfer", allowGroundTransfer != null && allowGroundTransfer);
         model.addAttribute("prefillGroundTransferRadiusKm", groundTransferRadiusKm);
+        model.addAttribute("prefillSchengenConnectionsOnly", schengenConnectionsOnly != null && schengenConnectionsOnly);
+        // Lets the form tell a fresh visit from a return trip through "Back to search", so
+        // defaults apply to the first and the previous choices to the second.
+        model.addAttribute("hasPreviousSearch", to != null);
 
         return "index";
     }
@@ -117,6 +122,7 @@ public class WebController {
         @RequestParam(defaultValue = "false") boolean allowReturnFromDifferentAirport,
         @RequestParam(defaultValue = "false") boolean allowGroundTransfer,
         @RequestParam(required = false) Integer groundTransferRadiusKm,
+        @RequestParam(defaultValue = "false") boolean schengenConnectionsOnly,
         Model model
     ) {
         Set<Airline> airlineSet = new HashSet<>();
@@ -133,7 +139,7 @@ public class WebController {
         SearchRequest request = new SearchRequest(
             from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, maxStops, airlineSet, sortBy,
             minConnectionMinutes, maxConnectionMinutes, stayMinDays, stayMaxDays, allowOvernightConnection,
-            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm
+            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm, schengenConnectionsOnly
         );
 
         List<SearchResult> results = searchService.search(request);
@@ -164,6 +170,7 @@ public class WebController {
         model.addAttribute("qAllowReturnFromDifferentAirport", allowReturnFromDifferentAirport);
         model.addAttribute("qAllowGroundTransfer", allowGroundTransfer);
         model.addAttribute("qGroundTransferRadiusKm", groundTransferRadiusKm);
+        model.addAttribute("qSchengenConnectionsOnly", schengenConnectionsOnly);
 
         return "results";
     }

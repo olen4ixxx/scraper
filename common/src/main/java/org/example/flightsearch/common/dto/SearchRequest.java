@@ -34,7 +34,11 @@ public record SearchRequest(
     // On, a nearby airport (within groundTransferRadiusKm) also counts as a valid connection
     // point - the existing connection-time window still governs how long that transfer can take.
     boolean allowGroundTransfer,
-    Integer groundTransferRadiusKm
+    Integer groundTransferRadiusKm,
+    // Off by default: a connection may be anywhere. On, the airport changed at has to be
+    // somewhere a Schengen visa already covers - a cheap itinerary through a country you
+    // can't enter isn't one.
+    boolean schengenConnectionsOnly
 ) {
     public enum SortBy {
         CHEAPEST,

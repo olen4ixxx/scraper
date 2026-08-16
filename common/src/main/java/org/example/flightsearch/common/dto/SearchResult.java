@@ -2,6 +2,7 @@ package org.example.flightsearch.common.dto;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 public record SearchResult(
@@ -22,6 +23,22 @@ public record SearchResult(
 ) {
     public boolean isRoundTrip() {
         return returnSegments != null && !returnSegments.isEmpty();
+    }
+
+    /**
+     * Days actually at the destination: from the day the outbound flight lands to the day the
+     * return one leaves. Counting from the outbound's departure instead would overstate a trip
+     * whose outbound lands the next day after an overnight connection - the traveller is still
+     * in transit, not there.
+     *
+     * <p>The stay-length filter uses the same arithmetic, so a trip shown as five days is one
+     * a search for five days finds.
+     */
+    public long stayDays() {
+        if (!isRoundTrip()) {
+            return 0;
+        }
+        return ChronoUnit.DAYS.between(arrival.toLocalDate(), returnDeparture.toLocalDate());
     }
 
     public record Segment(

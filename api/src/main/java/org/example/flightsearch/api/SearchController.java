@@ -42,12 +42,13 @@ public class SearchController {
         @RequestParam(defaultValue = "false") boolean allowReturnToDifferentAirport,
         @RequestParam(defaultValue = "false") boolean allowReturnFromDifferentAirport,
         @RequestParam(defaultValue = "false") boolean allowGroundTransfer,
-        @RequestParam(required = false) Integer groundTransferRadiusKm
+        @RequestParam(required = false) Integer groundTransferRadiusKm,
+        @RequestParam(defaultValue = "false") boolean schengenConnectionsOnly
     ) {
         SearchRequest request = new SearchRequest(
             from, to, departure, departureRangeEnd, returnDate, returnRangeEnd, maxStops, airlines, sortBy,
             minConnectionMinutes, maxConnectionMinutes, stayMinDays, stayMaxDays, allowOvernightConnection,
-            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm
+            allowReturnToDifferentAirport, allowReturnFromDifferentAirport, allowGroundTransfer, groundTransferRadiusKm, schengenConnectionsOnly
         );
         return searchService.search(request);
     }

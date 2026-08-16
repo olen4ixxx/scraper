@@ -607,16 +607,20 @@
 
             <div class="checkbox-group">
                 <input type="checkbox" id="allowOvernightConnection" name="allowOvernightConnection">
-                <label for="allowOvernightConnection">I don't mind waiting at the airport overnight (connection may run through 01:00–05:00)</label>
+                <label for="allowOvernightConnection">I don't mind waiting at the airport overnight</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="schengenConnectionsOnly" name="schengenConnectionsOnly">
+                <label for="schengenConnectionsOnly">Change planes inside Schengen only</label>
             </div>
 
             <div class="form-group">
-                <label>Allow ground transfer between nearby airports (for 1+ stop searches)</label>
                 <div class="checkbox-group">
-                    <input type="checkbox" id="allowGroundTransfer" name="allowGroundTransfer">
-                    <label for="allowGroundTransfer">e.g. land at Milan Malpensa, connect onward from Milan Bergamo</label>
+                    <input type="checkbox" id="allowGroundTransfer" name="allowGroundTransfer" checked>
+                    <label for="allowGroundTransfer">Allow ground transfer between nearby airports</label>
                 </div>
-                <div class="conn-window" id="groundTransferRadiusRow" style="display:none;">
+                <div class="conn-window" id="groundTransferRadiusRow">
                     <div class="conn-field">
                         <span class="conn-field-label">Within</span>
                         <input type="number" id="groundTransferRadiusKm" name="groundTransferRadiusKm" class="conn-input" min="0" max="500" step="50" value="100">
@@ -626,7 +630,7 @@
             </div>
 
             <div class="form-group" id="stayDurationGroup">
-                <label>Length of stay (for round trips)</label>
+                <label>Length of stay</label>
                 <div class="conn-window">
                     <div class="conn-field">
                         <span class="conn-field-label">Min</span>
@@ -641,16 +645,25 @@
                 </div>
             </div>
 
+            <!-- Phrased as what stays the same rather than what may differ: "return to the
+                 same airport I left from" is the thing being kept, and ticked is the stricter
+                 search. The two hidden fields carry the opposite to the server, which asks
+                 whether a difference is allowed. -->
             <div class="form-group" id="asymmetricAirportsGroup">
-                <label>Round-trip airports (for round trips)</label>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="allowReturnToDifferentAirport" name="allowReturnToDifferentAirport">
-                    <label for="allowReturnToDifferentAirport">Return to a different departure airport (e.g. out of WMI, back into Krakow or WAW)</label>
+                <label>Round-trip airports</label>
+                <div class="conn-window">
+                    <div class="conn-field">
+                        <span class="conn-field-label">Return</span>
+                        <input type="checkbox" id="sameDepartAirport" checked>
+                        <label for="sameDepartAirport">to same depart airport</label>
+                    </div>
+                    <div class="conn-field">
+                        <input type="checkbox" id="sameArrivalAirport" checked>
+                        <label for="sameArrivalAirport">from same arrival airport</label>
+                    </div>
                 </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="allowReturnFromDifferentAirport" name="allowReturnFromDifferentAirport">
-                    <label for="allowReturnFromDifferentAirport">Depart the return leg from a different arrival airport (e.g. any airport in France)</label>
-                </div>
+                <input type="hidden" id="allowReturnToDifferentAirport" name="allowReturnToDifferentAirport">
+                <input type="hidden" id="allowReturnFromDifferentAirport" name="allowReturnFromDifferentAirport">
             </div>
 
             <div class="form-group">
@@ -703,8 +716,13 @@
             allowReturnToDifferentAirport: /*[[${prefillAllowReturnToDifferentAirport}]]*/ false,
             allowReturnFromDifferentAirport: /*[[${prefillAllowReturnFromDifferentAirport}]]*/ false,
             allowGroundTransfer: /*[[${prefillAllowGroundTransfer}]]*/ false,
-            groundTransferRadiusKm: /*[[${prefillGroundTransferRadiusKm}]]*/ null
+            groundTransferRadiusKm: /*[[${prefillGroundTransferRadiusKm}]]*/ null,
+            schengenConnectionsOnly: /*[[${prefillSchengenConnectionsOnly}]]*/ false
         };
+        // False on a first visit, true when arriving back through "Back to search". Without
+        // it, an unticked box in a previous search is indistinguishable from no previous
+        // search at all, and every default below would be overwritten with "off".
+        const HAS_PREVIOUS_SEARCH = /*[[${hasPreviousSearch}]]*/ false;
     </script>
     <script>
     (function() {
@@ -1101,12 +1119,21 @@
         const groundTransferRadiusKmEl = document.getElementById('groundTransferRadiusKm');
         const allowReturnToDifferentAirportEl = document.getElementById('allowReturnToDifferentAirport');
         const allowReturnFromDifferentAirportEl = document.getElementById('allowReturnFromDifferentAirport');
+        const sameDepartAirportEl = document.getElementById('sameDepartAirport');
+        const sameArrivalAirportEl = document.getElementById('sameArrivalAirport');
+        const schengenConnectionsOnlyEl = document.getElementById('schengenConnectionsOnly');
         const stayMinDaysEl = document.getElementById('stayMinDays');
         const stayMaxDaysEl = document.getElementById('stayMaxDays');
 
-        allowOvernightConnectionEl.checked = !!PREFILL.allowOvernightConnection;
-        allowReturnToDifferentAirportEl.checked = !!PREFILL.allowReturnToDifferentAirport;
-        allowReturnFromDifferentAirportEl.checked = !!PREFILL.allowReturnFromDifferentAirport;
+        // Only a return visit overrides the defaults set in the markup - see HAS_PREVIOUS_SEARCH.
+        if (HAS_PREVIOUS_SEARCH) {
+            allowOvernightConnectionEl.checked = !!PREFILL.allowOvernightConnection;
+            schengenConnectionsOnlyEl.checked = !!PREFILL.schengenConnectionsOnly;
+            allowGroundTransferEl.checked = !!PREFILL.allowGroundTransfer;
+            // The visible boxes say what stays the same, the remembered values say what may differ.
+            sameDepartAirportEl.checked = !PREFILL.allowReturnToDifferentAirport;
+            sameArrivalAirportEl.checked = !PREFILL.allowReturnFromDifferentAirport;
+        }
         if (PREFILL.stayMinDays !== null && PREFILL.stayMinDays !== undefined) stayMinDaysEl.value = PREFILL.stayMinDays;
         if (PREFILL.stayMaxDays !== null && PREFILL.stayMaxDays !== undefined) stayMaxDaysEl.value = PREFILL.stayMaxDays;
         if (PREFILL.groundTransferRadiusKm !== null && PREFILL.groundTransferRadiusKm !== undefined) {
@@ -1116,11 +1143,13 @@
         function updateGroundTransferRadiusVisibility() {
             groundTransferRadiusRowEl.style.display = allowGroundTransferEl.checked ? 'flex' : 'none';
         }
-        allowGroundTransferEl.checked = !!PREFILL.allowGroundTransfer;
         updateGroundTransferRadiusVisibility();
         allowGroundTransferEl.addEventListener('change', updateGroundTransferRadiusVisibility);
 
         document.querySelector('form').addEventListener('submit', function() {
+            allowReturnToDifferentAirportEl.value = sameDepartAirportEl.checked ? 'false' : 'true';
+            allowReturnFromDifferentAirportEl.value = sameArrivalAirportEl.checked ? 'false' : 'true';
+
             const minH = parseInt(minConnHoursEl.value, 10) || 0;
             const minM = parseInt(minConnMinutesEl.value, 10) || 0;
             minConnectionMinutesHiddenEl.value = minH * 60 + minM;
