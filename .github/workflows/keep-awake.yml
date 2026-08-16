@@ -1,0 +1,36 @@
+name: Keep the site awake
+
+# A free Render instance sleeps after 15 minutes without traffic, and waking it
+# takes the best part of a minute - long enough that a first-time visitor assumes
+# the site is broken. Pinging inside waking hours avoids that.
+#
+# Worth knowing: GitHub does not promise punctual scheduled runs, and this
+# repository's own collection runs have arrived around half an hour late
+# (a 10:00 schedule firing at 10:30). A ping that late arrives after the instance
+# has already gone to sleep, so this reduces cold starts rather than eliminating
+# them. A dedicated uptime pinger keeps time properly and costs nothing here.
+on:
+  schedule:
+    # Every 14 minutes, 06:00-21:59 UTC = 08:00-23:59 in Poland during summer time.
+    # Cron is always UTC and doesn't follow DST, so in winter this shifts an hour
+    # earlier locally (07:00-22:59) until the hours here are adjusted.
+    - cron: '*/14 6-21 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the site
+        run: |
+          # --max-time covers a cold start, which is the case this exists for:
+          # if the instance had already fallen asleep, this request is what wakes it.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 https://azair.onrender.com/)
+          echo "Site answered $code"
+          # Anything other than a 2xx means the site is down rather than merely
+          # asleep, which is worth a failed run to notice.
+          case "$code" in
+            2*) exit 0 ;;
+            *) echo "Unexpected response"; exit 1 ;;
+          esac
