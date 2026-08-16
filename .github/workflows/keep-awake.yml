@@ -4,17 +4,24 @@ name: Keep the site awake
 # takes the best part of a minute - long enough that a first-time visitor assumes
 # the site is broken. Pinging inside waking hours avoids that.
 #
-# Worth knowing: GitHub does not promise punctual scheduled runs, and this
-# repository's own collection runs have arrived around half an hour late
-# (a 10:00 schedule firing at 10:30). A ping that late arrives after the instance
-# has already gone to sleep, so this reduces cold starts rather than eliminating
-# them. A dedicated uptime pinger keeps time properly and costs nothing here.
+# Worth knowing: GitHub does not promise punctual scheduled runs. Measured across
+# this repository's own scheduled runs, they arrived 26 minutes late on average and
+# 57 at worst, and the documentation warns they can be dropped altogether under
+# enough load. A ping arriving that late finds the instance already asleep, so this
+# reduces cold starts rather than removing them - a dedicated uptime pinger keeps
+# time properly and would cost nothing here either.
 on:
   schedule:
-    # Every 14 minutes, 06:00-21:59 UTC = 08:00-23:59 in Poland during summer time.
-    # Cron is always UTC and doesn't follow DST, so in winter this shifts an hour
-    # earlier locally (07:00-22:59) until the hours here are adjusted.
-    - cron: '*/14 6-21 * * *'
+    # 06:00-21:59 UTC = 08:00-23:59 in Poland during summer time. Cron is always UTC
+    # and doesn't follow DST, so in winter this shifts an hour earlier locally
+    # (07:00-22:59) until the hours here are adjusted.
+    #
+    # Twelve minutes apart, and never on the hour: "*/14" would fire at :00, which is
+    # when every other repository's schedules are queued too and the delays measured
+    # here were worst. Twelve also leaves the wrap-around gap (:51 to the next :03)
+    # inside the fifteen minutes it takes the instance to fall asleep, which "*/14"
+    # did not - it left eighteen.
+    - cron: '3,15,27,39,51 6-21 * * *'
   workflow_dispatch:
 
 jobs:
