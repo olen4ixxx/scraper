@@ -71,8 +71,9 @@ public class WizzCollector implements AirlineCollector {
         logger.info("Loading the WizzAir network map...");
         JsonNode map = fetchMap();
         if (map == null) {
-            logger.error("Could not load the WizzAir map from {} - if this is a 404, their API version "
-                + "has moved on and the path in this collector needs updating", API_BASE);
+            logger.error("Could not load the WizzAir map from {} - a 404 means their API version has "
+                + "moved on and the path here needs updating; see the failure logged above for "
+                + "anything else", API_BASE);
             return List.of();
         }
 

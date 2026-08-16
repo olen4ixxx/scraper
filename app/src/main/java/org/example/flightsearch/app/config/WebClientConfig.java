@@ -26,6 +26,10 @@ public class WebClientConfig {
         
         return WebClient.builder()
             .clientConnector(new ReactorClientHttpConnector(httpClient))
+            // Fare responses are small, but a whole route network is not: WizzAir publishes
+            // theirs as a single 666KB document, against a 256KB default that fails the request
+            // after it has already been fetched successfully.
+            .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
             .build();
     }
 }
