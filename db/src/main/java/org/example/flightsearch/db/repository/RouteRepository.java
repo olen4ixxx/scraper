@@ -18,6 +18,11 @@ public interface RouteRepository extends CrudRepository<RouteEntity, Long> {
     @Query("SELECT * FROM route WHERE from_airport = :airport OR to_airport = :airport")
     Iterable<RouteEntity> findByAirport(@Param("airport") String airport);
 
+    // Lets a scheduled collection reuse the network found by an earlier run rather than
+    // rediscovering it - which for some airlines means ten thousand requests to learn nothing new.
+    @Query("SELECT * FROM route WHERE airline = :airline")
+    List<RouteEntity> findByAirline(@Param("airline") Airline airline);
+
     // Drives the airline filter on the search form. Requiring an actual flight keeps airlines
     // whose routes exist but were never priced (or that another tool has yet to collect) from
     // showing up as a filter that can only ever return nothing.

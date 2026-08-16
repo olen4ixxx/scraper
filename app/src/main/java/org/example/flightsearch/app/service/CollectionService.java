@@ -8,12 +8,14 @@ import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.common.model.Airport;
 import org.example.flightsearch.db.entity.RouteEntity;
 import org.example.flightsearch.db.repository.FlightRepository;
+import org.example.flightsearch.db.repository.RouteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -48,45 +50,56 @@ public class CollectionService {
     private final AirportResolver airportResolver;
     private final RoutePersistenceService routePersistenceService;
     private final FlightRepository flightRepository;
+    private final RouteRepository routeRepository;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
                              RoutePersistenceService routePersistenceService,
-                             FlightRepository flightRepository) {
+                             FlightRepository flightRepository,
+                             RouteRepository routeRepository) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
         this.flightRepository = flightRepository;
+        this.routeRepository = routeRepository;
     }
 
     public void collectAll() {
+        collectAll(false);
+    }
+
+    public void collectAll(boolean rediscoverRoutes) {
         logger.info("Starting collection for all airlines...");
 
         for (AirlineCollector collector : collectors) {
-            collectAirline(collector);
+            collectAirline(collector, rediscoverRoutes);
         }
 
         logger.info("Collection completed");
     }
 
     public void collectAirline(Airline airline) {
+        collectAirline(airline, false);
+    }
+
+    public void collectAirline(Airline airline, boolean rediscoverRoutes) {
         logger.info("Collecting data for airline: {}", airline);
 
         collectors.stream()
             .filter(c -> c.airline() == airline)
             .findFirst()
             .ifPresentOrElse(
-                this::collectAirline,
+                collector -> collectAirline(collector, rediscoverRoutes),
                 () -> logger.warn("No collector found for airline: {}", airline)
             );
     }
 
-    private void collectAirline(AirlineCollector collector) {
+    private void collectAirline(AirlineCollector collector, boolean rediscoverRoutes) {
         long startTime = System.currentTimeMillis();
         logger.info("Starting {} collection", collector.airline());
 
         try {
-            List<RouteDto> routes = collector.loadRoutes();
+            List<RouteDto> routes = resolveRoutes(collector, rediscoverRoutes);
             logger.info("Found {} routes for {}", routes.size(), collector.airline());
 
             AtomicInteger totalFlights = new AtomicInteger();
@@ -122,6 +135,30 @@ public class CollectionService {
             logger.error("Failed to collect data for {}", collector.airline(), e);
             throw new RuntimeException("Collection failed for " + collector.airline(), e);
         }
+    }
+
+    /**
+     * Route discovery costs wildly different amounts per airline: WizzAir publishes its whole
+     * network in one request, while Volotea publishes no route list at all and has to be asked
+     * about every airport pair - ten thousand requests, three quarters of an hour, to arrive at
+     * the same answer as last time. Networks change with the season, not between the runs of a
+     * six-hourly job, so a scheduled run reuses what was found before and only the occasional
+     * run rediscovers.
+     */
+    private List<RouteDto> resolveRoutes(AirlineCollector collector, boolean rediscoverRoutes) {
+        if (!rediscoverRoutes) {
+            List<RouteDto> known = new ArrayList<>();
+            for (RouteEntity route : routeRepository.findByAirline(collector.airline())) {
+                known.add(new RouteDto(route.id(), route.airline(), route.fromAirport(), route.toAirport()));
+            }
+            if (!known.isEmpty()) {
+                logger.info("Reusing {} known {} routes instead of rediscovering them",
+                    known.size(), collector.airline());
+                return known;
+            }
+            logger.info("No {} routes stored yet - discovering them", collector.airline());
+        }
+        return collector.loadRoutes();
     }
 
     private void processRoute(AirlineCollector collector, RouteDto routeDto, AtomicInteger totalFlights,

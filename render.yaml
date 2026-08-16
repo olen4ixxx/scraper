@@ -6,6 +6,10 @@ services:
     plan: free
     region: frankfurt
     healthCheckPath: /
+    # Every push to the default branch redeploys. Stated rather than left to the
+    # platform default, so what happens on a merge is readable from the repository.
+    autoDeploy: true
+    branch: main
     envVars:
       # Read-only instance: it serves the site, while collection stays in the scheduled
       # GitHub Actions run. Without this a public deployment would scrape on its own timer,

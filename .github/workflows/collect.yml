@@ -1,0 +1,101 @@
+name: Flight data collection
+
+on:
+  schedule:
+    # 05:00, 10:00, 15:00, 20:00 UTC = 07:00, 12:00, 17:00, 22:00 CEST (UTC+2).
+    # Cron is always UTC and doesn't follow DST - once Poland switches to CET
+    # (UTC+1) in autumn, these will run an hour later locally until adjusted.
+    - cron: '0 5,10,15,20 * * *'
+    # Sunday 02:00 UTC: the same collection, but re-scanning each airline's network
+    # rather than reusing the stored one. Discovery is the expensive half - Volotea
+    # publishes no route list and has to be asked about ten thousand airport pairs -
+    # and networks change with the season, not between six-hourly runs.
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      rediscoverRoutes:
+        description: 'Re-scan airline networks instead of reusing stored routes'
+        type: boolean
+        default: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      # One airline per job: they are independent, a failure against one shouldn't
+      # stop the rest, and each runner has its own address so no single airline sees
+      # the combined request rate.
+      fail-fast: false
+      matrix:
+        airline: [ryanair, wizzair, vueling, transavia, volotea]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # Boots the app (Flyway brings the schema up to date on whatever database
+      # SPRING_DATASOURCE_URL points at) and calls the collection endpoint, which
+      # blocks until the run finishes. easyJet is absent on purpose: their site
+      # refuses any non-browser client, so it can't be collected this way.
+      - name: Collect ${{ matrix.airline }}
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.DB_JDBC_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.DB_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          # Five of these run at once against one small database, so each keeps a
+          # modest pool rather than the default ten connections apiece.
+          SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: '4'
+        run: |
+          REDISCOVER=false
+          if [ "${{ github.event.schedule }}" = "0 2 * * 0" ] || [ "${{ inputs.rediscoverRoutes }}" = "true" ]; then
+            REDISCOVER=true
+          fi
+          echo "Collecting ${{ matrix.airline }} (rediscoverRoutes=$REDISCOVER)"
+
+          ./gradlew :app:bootRun --no-daemon > >(tee app-run.log) 2>&1 &
+          APP_PID=$!
+
+          up=false
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8080/ -o /dev/null; then
+              echo "App is up after ${i} checks"
+              up=true
+              break
+            fi
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "App process died during startup"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          if [ "$up" != true ]; then
+            echo "App did not start in time"
+            kill $APP_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          curl -sf -X POST "http://localhost:8080/collect/${{ matrix.airline }}?rediscoverRoutes=$REDISCOVER" \
+            --max-time 10800
+          COLLECT_STATUS=$?
+
+          kill $APP_PID 2>/dev/null || true
+          wait $APP_PID 2>/dev/null || true
+
+          exit $COLLECT_STATUS
+
+      - name: Upload app log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-run-log-${{ matrix.airline }}
+          path: app-run.log
