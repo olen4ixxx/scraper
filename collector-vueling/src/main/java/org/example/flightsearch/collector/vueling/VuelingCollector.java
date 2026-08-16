@@ -32,12 +32,10 @@ import java.util.Set;
  * window", one answer per destination. So a route yields one dated fare per month asked
  * about, not one per day.
  *
- * <p>It reports a time of day that does not survive checking - an evening departure for
- * Madrid to Tenerife on a date whose published schedule has none - and no arrival time at
- * all. Rather than present a precise time that cannot be corroborated, or invent one from
- * distance and a guessed cruise speed, only the date is kept and spread across its own day.
- * Connection search still works, at the cost of a meaningless duration - the same trade the
- * WizzAir and Transavia rows already make.
+ * <p>It also returns no arrival time - only the departure. Rather than invent one from
+ * distance and a guessed cruise speed, arrival is stored equal to departure, which shows as
+ * a zero-length flight. Connection search still works (it needs the departure of the onward
+ * leg), but total trip duration is wrong for any itinerary using a Vueling leg.
  */
 public class VuelingCollector implements AirlineCollector {
     private static final Logger logger = LoggerFactory.getLogger(VuelingCollector.class);
@@ -135,15 +133,9 @@ public class VuelingCollector implements AirlineCollector {
                 }
                 double price = integerPart.asDouble() + fare.path("decimalPartPrice").asDouble() / 100.0;
 
-                // The response carries a time of day, but it doesn't survive checking: for
-                // Madrid to Tenerife it reports an evening departure on a date whose published
-                // schedule has none. It comes from their own "departureDate" field, so it is
-                // not invented here, but it cannot be corroborated either - and a precise time
-                // is exactly the kind of thing someone plans a day around. Only the date is
-                // kept, spread across its own day like the other date-only sources, which also
-                // keeps these eligible as connections.
-                LocalDate day = departure.toLocalDate();
-                flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1), price, "EUR"));
+                // Flight number and arrival time are simply not in this response - "N/A" and a
+                // repeated departure beat inventing either. See the class comment.
+                flights.add(new FlightDto("N/A", departure, departure, price, "EUR"));
             } catch (Exception e) {
                 logger.warn("Failed to parse Vueling fare entry: {}", e.getMessage());
             }
