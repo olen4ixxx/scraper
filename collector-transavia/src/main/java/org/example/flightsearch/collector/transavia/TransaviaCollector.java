@@ -3,6 +3,7 @@ package org.example.flightsearch.collector.transavia;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.RateLimiter;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Transavia's fare calendar, the endpoint their own booking page calls. It needs no key and
@@ -50,9 +52,19 @@ public class TransaviaCollector implements AirlineCollector {
      */
     private static final List<String> DISCOVERY_SEEDS = List.of("AMS", "ORY");
 
+    /**
+     * Discovery asks about thousands of pairs, and Transavia starts refusing when asked this
+     * much this quickly - a few thousand probes at four per second took the refusal rate from
+     * 0.4% to four in five. So it goes slower than the others to begin with, widens the gap
+     * further when refused, and abandons the run rather than grinding through the remaining
+     * thousands of probes once it is clear nothing is getting through.
+     */
+    private static final int CONSECUTIVE_REFUSALS_BEFORE_ABANDONING = 25;
+
     private final WebClient webClient;
     private final AirportResolver airportResolver;
-    private final RateLimiter rateLimiter = new RateLimiter(400);
+    private final RateLimiter rateLimiter = new RateLimiter(1200);
+    private final AtomicInteger consecutiveRefusals = new AtomicInteger();
 
     public TransaviaCollector(WebClient webClient, AirportResolver airportResolver) {
         this.webClient = webClient;
@@ -70,10 +82,15 @@ public class TransaviaCollector implements AirlineCollector {
         logger.info("Discovering Transavia network among {} known airports, seeded from {}...",
             airports.size(), DISCOVERY_SEEDS);
 
+        consecutiveRefusals.set(0);
+
         // Anything Transavia serves at all reaches one of its bases, so a couple of probes per
         // airport is enough to tell whether it is worth looking at further.
         Set<String> inNetwork = new LinkedHashSet<>(DISCOVERY_SEEDS);
         for (String airport : airports) {
+            if (beingRefused()) {
+                return abandonDiscovery();
+            }
             if (DISCOVERY_SEEDS.contains(airport)) {
                 continue;
             }
@@ -89,6 +106,9 @@ public class TransaviaCollector implements AirlineCollector {
         List<RouteDto> routes = new ArrayList<>();
         for (String origin : inNetwork) {
             for (String destination : inNetwork) {
+                if (beingRefused()) {
+                    return abandonDiscovery();
+                }
                 if (!origin.equals(destination) && isServed(origin, destination)) {
                     routes.add(new RouteDto(null, Airline.TRANSAVIA, origin, destination));
                 }
@@ -97,6 +117,22 @@ public class TransaviaCollector implements AirlineCollector {
 
         logger.info("Loaded {} Transavia routes total", routes.size());
         return routes;
+    }
+
+    private boolean beingRefused() {
+        return consecutiveRefusals.get() >= CONSECUTIVE_REFUSALS_BEFORE_ABANDONING;
+    }
+
+    /**
+     * Returning nothing rather than a partial network on purpose: a half-scanned network saved
+     * as if it were complete would be reused by every later run, quietly leaving out the routes
+     * the scan never reached.
+     */
+    private List<RouteDto> abandonDiscovery() {
+        logger.warn("Abandoning Transavia discovery - {} requests refused in a row, so they are "
+            + "throttling us and the rest of the scan would only add to it. Nothing is saved from "
+            + "a partial scan; try again later.", consecutiveRefusals.get());
+        return List.of();
     }
 
     @Override
@@ -118,17 +154,25 @@ public class TransaviaCollector implements AirlineCollector {
      * from the network. Those get one retry before being given up on.
      */
     private JsonNode requestFares(String origin, String destination) {
-        try {
-            return attemptFares(origin, destination);
-        } catch (TransientFailure firstAttempt) {
-            logger.debug("Retrying Transavia {} -> {} after {}", origin, destination, firstAttempt.getMessage());
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                JsonNode response = attemptFares(origin, destination);
+                // A real answer, including "Invalid route" - either way they are talking to us.
+                consecutiveRefusals.set(0);
+                rateLimiter.recovered();
+                return response;
+            } catch (TransientFailure e) {
+                // Widen the gap before trying again rather than immediately repeating the
+                // request: retrying at once is more pressure at the moment they are asking
+                // for less, which is how a 0.4% refusal rate became four in five.
+                rateLimiter.backOff();
+                if (attempt == 2) {
+                    consecutiveRefusals.incrementAndGet();
+                    logger.debug("Giving up on Transavia {} -> {}: {}", origin, destination, e.getMessage());
+                }
+            }
         }
-        try {
-            return attemptFares(origin, destination);
-        } catch (TransientFailure retry) {
-            logger.debug("Giving up on Transavia {} -> {}: {}", origin, destination, retry.getMessage());
-            return null;
-        }
+        return null;
     }
 
     private JsonNode attemptFares(String origin, String destination) throws TransientFailure {
@@ -190,31 +234,4 @@ public class TransaviaCollector implements AirlineCollector {
         return flights;
     }
 
-    /**
-     * Spaces out calls to at most one per {@code minIntervalMillis}, shared across every
-     * caller regardless of how many threads are calling concurrently - a simple leaky-bucket:
-     * each acquire() reserves the next free slot and sleeps only as long as needed to reach it.
-     */
-    private static final class RateLimiter {
-        private final long minIntervalMillis;
-        private long nextAllowedTime = 0;
-
-        RateLimiter(long minIntervalMillis) {
-            this.minIntervalMillis = minIntervalMillis;
-        }
-
-        synchronized void acquire() {
-            long now = System.currentTimeMillis();
-            long waitUntil = Math.max(now, nextAllowedTime);
-            nextAllowedTime = waitUntil + minIntervalMillis;
-            long sleepMs = waitUntil - now;
-            if (sleepMs > 0) {
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-    }
 }

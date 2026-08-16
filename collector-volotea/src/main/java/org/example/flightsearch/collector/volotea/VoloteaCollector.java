@@ -3,6 +3,7 @@ package org.example.flightsearch.collector.volotea;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.RateLimiter;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -185,31 +186,4 @@ public class VoloteaCollector implements AirlineCollector {
         return flights;
     }
 
-    /**
-     * Spaces out calls to at most one per {@code minIntervalMillis}, shared across every
-     * caller regardless of how many threads are calling concurrently - a simple leaky-bucket:
-     * each acquire() reserves the next free slot and sleeps only as long as needed to reach it.
-     */
-    private static final class RateLimiter {
-        private final long minIntervalMillis;
-        private long nextAllowedTime = 0;
-
-        RateLimiter(long minIntervalMillis) {
-            this.minIntervalMillis = minIntervalMillis;
-        }
-
-        synchronized void acquire() {
-            long now = System.currentTimeMillis();
-            long waitUntil = Math.max(now, nextAllowedTime);
-            nextAllowedTime = waitUntil + minIntervalMillis;
-            long sleepMs = waitUntil - now;
-            if (sleepMs > 0) {
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-    }
 }
