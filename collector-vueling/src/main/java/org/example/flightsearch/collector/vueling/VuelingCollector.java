@@ -36,6 +36,13 @@ import java.util.Set;
  * distance and a guessed cruise speed, arrival is stored equal to departure, which shows as
  * a zero-length flight. Connection search still works (it needs the departure of the onward
  * leg), but total trip duration is wrong for any itinerary using a Vueling leg.
+ *
+ * <p>Unresolved: the departure time they give doesn't match their own published schedule.
+ * Madrid to Tenerife comes back as an evening departure on a date whose site lists four
+ * flights, none in the evening, and asking about several separate months returns evening
+ * times throughout. The value is theirs, from the "departureDate" field, so it is not
+ * fabricated here - but it has not been reconciled with what they publish, and until it is,
+ * the time on a Vueling row is worth less than the date and price beside it.
  */
 public class VuelingCollector implements AirlineCollector {
     private static final Logger logger = LoggerFactory.getLogger(VuelingCollector.class);
