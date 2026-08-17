@@ -209,6 +209,10 @@ public class CollectionService {
                 return;
             }
 
+            // Marked before the call, not after it, so a route that is refused or errors still
+            // moves to the back of the queue instead of blocking the front of every later pass.
+            routeRepository.markAttempted(route.id(), Instant.now());
+
             // Network call kept outside the DB transaction on purpose.
             List<FlightDto> flights = collector.loadFlights(routeDto);
 

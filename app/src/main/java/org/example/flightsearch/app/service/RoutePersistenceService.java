@@ -96,7 +96,7 @@ public class RoutePersistenceService {
         return routeRepository.findByAirlineAndFromAirportAndToAirport(
             routeDto.airline(), routeDto.fromAirport(), routeDto.toAirport()
         ).orElseGet(() -> {
-            RouteEntity route = new RouteEntity(null, routeDto.airline(), routeDto.fromAirport(), routeDto.toAirport(), true);
+            RouteEntity route = new RouteEntity(null, routeDto.airline(), routeDto.fromAirport(), routeDto.toAirport(), true, null);
             return routeRepository.save(route);
         });
     }

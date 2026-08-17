@@ -1,0 +1,14 @@
+-- When a collection pass cannot finish - and with airlines metering what they answer, a WizzAir
+-- pass is two and a half hours and often cannot - the order routes are visited in decides what
+-- ever gets collected. A fixed order refreshes the same head of the list every few hours and
+-- never reaches the tail at all.
+--
+-- Ordering by when a route was last collected fixes that but inverts it: a route that yields
+-- nothing never gets a price, so it never stops sorting first. WizzAir has 39 routes it has
+-- stopped flying and answers "InvalidArrivalStationCode" for, and 226 that have never returned a
+-- fare - between them they would occupy the front of every pass forever, and the routes with
+-- actual flights would be the ones starved.
+--
+-- Recording the attempt rather than the success is what makes the rotation fair: a route that was
+-- tried goes to the back whether or not it had anything to give.
+ALTER TABLE route ADD COLUMN last_attempted_at TIMESTAMPTZ;
