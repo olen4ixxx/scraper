@@ -13,11 +13,19 @@ import org.slf4j.LoggerFactory;
  * in five, and the obvious response - retrying immediately - doubles the pressure at exactly
  * the moment they are asking for less of it. Backing off and letting the interval decay again
  * once requests start succeeding is what they are actually asking for.
+ *
+ * <p>Widening and decay are deliberately mirror images, because they were not to begin with:
+ * tripling on refusal while giving back only 30% on success meant every refusal needed three
+ * and a half successes to undo, so any refusal rate above roughly one in five ratcheted the
+ * interval upwards for good. A Transavia discovery run reached 32 seconds between requests that
+ * way - a pace at which its scan needed 34 hours - and never came back down. Now one answer
+ * undoes one refusal, so the interval tracks how the site is actually responding instead of
+ * drifting to the ceiling and staying there.
  */
 public class RateLimiter {
     private static final Logger logger = LoggerFactory.getLogger(RateLimiter.class);
-    private static final double WIDEN_BY = 3.0;
-    private static final double DECAY_BY = 0.7;
+    private static final double WIDEN_BY = 2.0;
+    private static final double DECAY_BY = 0.5;
 
     private final long baseIntervalMillis;
     private final long maxIntervalMillis;
@@ -25,8 +33,14 @@ public class RateLimiter {
     private long currentIntervalMillis;
     private long nextAllowedTime;
 
+    /**
+     * The ceiling is low on purpose. Sixty seconds between requests, where it used to sit, is not
+     * a slower run but a dead one - no scan of thousands of pairs finishes at that pace, so the
+     * limiter would sit there politely accomplishing nothing. Past this point the right answer is
+     * to stop and come back later, which is what the collectors now do.
+     */
     public RateLimiter(long baseIntervalMillis) {
-        this(baseIntervalMillis, Math.max(baseIntervalMillis * 60, 60_000));
+        this(baseIntervalMillis, Math.max(baseIntervalMillis * 16, 10_000));
     }
 
     public RateLimiter(long baseIntervalMillis, long maxIntervalMillis) {
