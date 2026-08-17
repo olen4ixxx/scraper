@@ -3,7 +3,9 @@ package org.example.flightsearch.collector.wizz;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.collector.RateLimiter;
+import org.example.flightsearch.collector.Refusal;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.currency.EurConverter;
 import org.example.flightsearch.common.dto.FlightDto;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * WizzAir fares over plain HTTP. Their booking site sits behind Kasada and cannot be scripted -
@@ -29,6 +32,13 @@ import java.util.Set;
  * <p>Two endpoints do everything. The asset map returns their entire network - every city with
  * the places it flies to - so routes are read rather than discovered by probing thousands of
  * pairs. The fare chart then answers a price per day, a fortnight at a time.
+ *
+ * <p>Unprotected is not the same as unlimited, though. The fare chart starts answering 503 when
+ * asked too often - 2.5 requests a second had it refusing 28 seconds into a run and refusing 421
+ * of the next 429 - and the refusal is per-address, not per-client: once it starts, a browser
+ * asking by hand from the same address is turned away too. So the pace here is deliberate, it
+ * widens further when they push back, and a run that keeps being refused stops instead of walking
+ * the rest of the network collecting nothing.
  *
  * <p>Two things to know about the data. Fares carry a date and an amount but no time of day, so
  * departure and arrival are stored as the placeholder ends of the day, the convention the rest
@@ -51,10 +61,31 @@ public class WizzCollector implements AirlineCollector {
     // The largest interval the fare chart accepts; anything more is rejected outright.
     private static final int DAY_INTERVAL = 7;
 
+    /**
+     * How many refusals in a row mean the run is over rather than unlucky. Being turned away is
+     * not rare enough to treat as fatal on its own - the occasional 503 comes back on the next
+     * request - but a couple of dozen without a single answer between them is the site saying
+     * stop, and the remaining thousands of requests would neither collect anything nor be a
+     * decent thing to send.
+     */
+    private static final int CONSECUTIVE_REFUSALS_BEFORE_ABANDONING = 25;
+
     private final WebClient webClient;
     private final AirportResolver airportResolver;
     private final EurConverter eurConverter;
-    private final RateLimiter rateLimiter = new RateLimiter(400);
+    /**
+     * Two seconds, measured rather than guessed. A steady series at one second was allowed 45
+     * requests and refused from the 46th; the same series at two seconds ran 40 for 40 with no
+     * refusal at all. Their limit sits near fifty requests a minute, and the run this code used
+     * to make - 2.5 a second - was over it by a factor of three within half a minute of starting.
+     *
+     * <p>It makes a full pass over the network expensive: four requests a route, some 4,400 in
+     * all, is around two and a half hours. That is the price of what they allow, and it is why
+     * routes are collected longest-unvisited first, so a pass that doesn't finish still moves
+     * coverage forward instead of refreshing the same head of the list.
+     */
+    private final RateLimiter rateLimiter = new RateLimiter(2000);
+    private final AtomicInteger consecutiveRefusals = new AtomicInteger();
 
     public WizzCollector(WebClient webClient, AirportResolver airportResolver, EurConverter eurConverter) {
         this.webClient = webClient;
@@ -157,8 +188,21 @@ public class WizzCollector implements AirlineCollector {
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
+            consecutiveRefusals.set(0);
+            rateLimiter.recovered();
             return mapper.readTree(json);
         } catch (Exception e) {
+            if (Refusal.is(e)) {
+                rateLimiter.backOff();
+                int inARow = consecutiveRefusals.incrementAndGet();
+                if (inARow >= CONSECUTIVE_REFUSALS_BEFORE_ABANDONING) {
+                    throw new CollectionRefusedException(Airline.WIZZAIR, inARow, e.getMessage());
+                }
+                logger.debug("WizzAir refused {} -> {} around {}: {}",
+                    route.fromAirport(), route.toAirport(), centre, e.getMessage());
+                return null;
+            }
+            consecutiveRefusals.set(0);
             logger.debug("No WizzAir fares for {} -> {} around {}: {}",
                 route.fromAirport(), route.toAirport(), centre, e.getMessage());
             return null;
