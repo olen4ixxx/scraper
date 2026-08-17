@@ -2,6 +2,7 @@ package org.example.flightsearch.db.repository;
 
 import org.example.flightsearch.db.entity.FlightEntity;
 import org.example.flightsearch.db.entity.FlightWithPrice;
+import org.springframework.data.jdbc.repository.query.Modifying;
 import org.springframework.data.jdbc.repository.query.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
@@ -83,4 +84,16 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         @Param("from") Instant from,
         @Param("to") Instant to
     );
+    // Flights whose departure has passed cannot be booked and are never searched - the search
+    // window starts at today - so they are dead weight that would otherwise accumulate forever.
+    @Modifying
+    @Query("DELETE FROM flight WHERE departure < :cutoff")
+    int deleteDepartedFlights(@Param("cutoff") Instant cutoff);
+
+    // A flight with no price left is unreachable: every search reads a price through a LATERAL
+    // join, so a flight without one can never appear in a result.
+    @Modifying
+    @Query("DELETE FROM flight f WHERE NOT EXISTS (SELECT 1 FROM price_snapshot ps WHERE ps.flight_id = f.id)")
+    int deletePricelessFlights();
+
 }

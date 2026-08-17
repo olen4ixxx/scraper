@@ -8,6 +8,8 @@ import org.example.flightsearch.common.dto.RouteDto;
 import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.common.model.Airport;
 import org.example.flightsearch.db.entity.RouteEntity;
+import org.example.flightsearch.db.repository.FlightRepository;
+import org.example.flightsearch.db.repository.PriceSnapshotRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,15 +53,21 @@ public class CollectionService {
     private final AirportResolver airportResolver;
     private final RoutePersistenceService routePersistenceService;
     private final RouteRepository routeRepository;
+    private final FlightRepository flightRepository;
+    private final PriceSnapshotRepository priceSnapshotRepository;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
                              RoutePersistenceService routePersistenceService,
-                             RouteRepository routeRepository) {
+                             RouteRepository routeRepository,
+                             FlightRepository flightRepository,
+                             PriceSnapshotRepository priceSnapshotRepository) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
         this.routeRepository = routeRepository;
+        this.flightRepository = flightRepository;
+        this.priceSnapshotRepository = priceSnapshotRepository;
     }
 
     public void collectAll() {
@@ -92,9 +100,38 @@ public class CollectionService {
             );
     }
 
+    /**
+     * Drops what can no longer be used, so the database reaches a plateau instead of growing
+     * forever. Two kinds of dead weight: flights whose departure has passed, which no search can
+     * return because the search window starts at today, and flights left without any price.
+     *
+     * <p>Run before collecting rather than on a timer, because there is no timer to run on - the
+     * scheduled job starts the application, collects, and stops. Deleting first also means the
+     * space freed is space the pass about to run can write into, which is what keeps a plateau a
+     * plateau: Postgres reuses the room a delete leaves behind, so the files stop growing without
+     * anyone having to compact them by hand.
+     */
+    private void removeDeadWeight() {
+        try {
+            Instant departed = Instant.now();
+            int prices = priceSnapshotRepository.deleteForDepartedFlights(departed);
+            int flights = flightRepository.deleteDepartedFlights(departed);
+            int priceless = flightRepository.deletePricelessFlights();
+            if (flights > 0 || priceless > 0) {
+                logger.info("Cleared {} departed flights ({} price rows) and {} left without a price",
+                    flights, prices, priceless);
+            }
+        } catch (Exception e) {
+            // Housekeeping must never be the reason a collection run fails.
+            logger.warn("Could not clear out departed flights: {}", e.getMessage());
+        }
+    }
+
     private void collectAirline(AirlineCollector collector, boolean rediscoverRoutes) {
         long startTime = System.currentTimeMillis();
         logger.info("Starting {} collection", collector.airline());
+
+        removeDeadWeight();
 
         try {
             List<RouteDto> routes = resolveRoutes(collector, rediscoverRoutes);
