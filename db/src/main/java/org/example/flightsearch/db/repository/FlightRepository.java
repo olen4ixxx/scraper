@@ -47,6 +47,7 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
             LIMIT 1
         ) ps
         WHERE r.from_airport IN (:fromAirports)
+        AND r.active
         AND f.departure >= :from AND f.departure <= :to
         AND ps.price >= 5
         ORDER BY f.departure ASC
@@ -71,6 +72,7 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
             LIMIT 1
         ) ps
         WHERE r.from_airport IN (:fromAirports) AND r.to_airport IN (:toAirports)
+        AND r.active
         AND f.departure >= :from AND f.departure <= :to
         AND ps.price >= 5
         ORDER BY ps.price ASC

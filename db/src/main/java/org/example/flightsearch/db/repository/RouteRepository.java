@@ -34,7 +34,7 @@ public interface RouteRepository extends CrudRepository<RouteEntity, Long> {
     // routes that do have flights.
     @Query("""
         SELECT * FROM route
-        WHERE airline = :airline
+        WHERE airline = :airline AND active
         ORDER BY last_attempted_at ASC NULLS FIRST, id
         """)
     List<RouteEntity> findByAirline(@Param("airline") Airline airline);
@@ -42,6 +42,18 @@ public interface RouteRepository extends CrudRepository<RouteEntity, Long> {
     @Modifying
     @Query("UPDATE route SET last_attempted_at = :attemptedAt WHERE id = :id")
     void markAttempted(@Param("id") Long id, @Param("attemptedAt") Instant attemptedAt);
+
+    // Retiring a route rather than deleting it. An airline's network changes with the season,
+    // and a route absent from one rediscovery may well be back in the next - deleting would
+    // throw away its price history for good, while this is a flag that flips back. Collection
+    // skips retired routes, and so does search, so they cost nothing until they return.
+    @Modifying
+    @Query("UPDATE route SET active = FALSE WHERE airline = :airline AND active AND id NOT IN (:keepIds)")
+    int retireRoutesOtherThan(@Param("airline") Airline airline, @Param("keepIds") Iterable<Long> keepIds);
+
+    @Modifying
+    @Query("UPDATE route SET active = TRUE WHERE id IN (:ids) AND NOT active")
+    int reinstate(@Param("ids") Iterable<Long> ids);
 
     // Drives the airline filter on the search form. Requiring an actual flight keeps airlines
     // whose routes exist but were never priced (or that another tool has yet to collect) from

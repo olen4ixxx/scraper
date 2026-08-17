@@ -199,7 +199,7 @@ public class CollectionService {
      * with nothing to say it was partial.
      */
     private void storeRoutes(AirlineCollector collector, List<RouteDto> routes) {
-        int stored = 0;
+        List<Long> discoveredIds = new ArrayList<>();
         for (RouteDto routeDto : routes) {
             Optional<Airport> fromAirport = airportResolver.resolve(routeDto.fromAirport());
             Optional<Airport> toAirport = airportResolver.resolve(routeDto.toAirport());
@@ -207,14 +207,28 @@ public class CollectionService {
                 continue;
             }
             try {
-                routePersistenceService.ensureRoute(routeDto, fromAirport.get(), toAirport.get());
-                stored++;
+                discoveredIds.add(routePersistenceService.ensureRoute(routeDto, fromAirport.get(), toAirport.get()).id());
             } catch (Exception e) {
                 logger.warn("Could not store discovered route {} -> {} for {}: {}",
                     routeDto.fromAirport(), routeDto.toAirport(), collector.airline(), e.getMessage());
             }
         }
-        logger.info("Stored {} discovered {} routes before collecting fares", stored, collector.airline());
+        logger.info("Stored {} discovered {} routes before collecting fares",
+            discoveredIds.size(), collector.airline());
+
+        // A discovery that produced nothing is a failed discovery, not an airline that stopped
+        // flying - retiring its whole network on the strength of that would be the worst possible
+        // reading of it.
+        if (discoveredIds.isEmpty()) {
+            return;
+        }
+
+        int reinstated = routeRepository.reinstate(discoveredIds);
+        int retired = routeRepository.retireRoutesOtherThan(collector.airline(), discoveredIds);
+        if (retired > 0 || reinstated > 0) {
+            logger.info("{} routes: {} retired as no longer flown, {} brought back",
+                collector.airline(), retired, reinstated);
+        }
     }
 
     private void processRoute(AirlineCollector collector, RouteDto routeDto, AtomicInteger totalFlights,
