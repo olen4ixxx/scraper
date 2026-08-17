@@ -1,6 +1,7 @@
 package org.example.flightsearch.app.service;
 
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -22,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Orchestrates collection: fetches routes/flights from each collector and hands
@@ -106,10 +108,17 @@ public class CollectionService {
             AtomicInteger skippedRoutes = new AtomicInteger();
             AtomicInteger skippedFresh = new AtomicInteger();
             Semaphore concurrencyLimit = new Semaphore(ROUTE_CONCURRENCY);
+            // Set by whichever route first finds the site has stopped answering. Routes run on
+            // their own threads, so a refusal can't simply propagate out of here - it has to be
+            // handed back. Once it is, the remaining routes are dropped rather than sent.
+            AtomicReference<RuntimeException> refused = new AtomicReference<>();
 
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 for (RouteDto routeDto : routes) {
                     executor.submit(() -> {
+                        if (refused.get() != null) {
+                            return;
+                        }
                         try {
                             concurrencyLimit.acquire();
                         } catch (InterruptedException e) {
@@ -117,7 +126,7 @@ public class CollectionService {
                             return;
                         }
                         try {
-                            processRoute(collector, routeDto, totalFlights, skippedRoutes, skippedFresh);
+                            processRoute(collector, routeDto, totalFlights, skippedRoutes, skippedFresh, refused);
                         } finally {
                             concurrencyLimit.release();
                         }
@@ -128,8 +137,24 @@ public class CollectionService {
             }
 
             long duration = System.currentTimeMillis() - startTime;
+            RuntimeException refusal = refused.get();
+            if (refusal != null) {
+                logger.error("{} collection abandoned after {}ms with {} flights collected: {}",
+                    collector.airline(), duration, totalFlights.get(), refusal.getMessage());
+                throw refusal;
+            }
             logger.info("{} collection completed: routes={}, skipped={}, alreadyFresh={}, flights={}, duration={}ms",
                 collector.airline(), routes.size(), skippedRoutes.get(), skippedFresh.get(), totalFlights.get(), duration);
+
+            // A pass that visited routes and came back with nothing is not a successful pass. It
+            // used to read as one, which is how WizzAir and Transavia sat still for days behind a
+            // green job.
+            int attempted = routes.size() - skippedRoutes.get() - skippedFresh.get();
+            if (attempted > 0 && totalFlights.get() == 0) {
+                logger.error("{} collected no fares at all from {} routes - the run finished, but it "
+                    + "achieved nothing, so treat this as a failure and look at why",
+                    collector.airline(), attempted);
+            }
 
         } catch (Exception e) {
             logger.error("Failed to collect data for {}", collector.airline(), e);
@@ -162,7 +187,8 @@ public class CollectionService {
     }
 
     private void processRoute(AirlineCollector collector, RouteDto routeDto, AtomicInteger totalFlights,
-                               AtomicInteger skippedRoutes, AtomicInteger skippedFresh) {
+                               AtomicInteger skippedRoutes, AtomicInteger skippedFresh,
+                               AtomicReference<RuntimeException> refused) {
         try {
             Optional<Airport> fromAirport = airportResolver.resolve(routeDto.fromAirport());
             Optional<Airport> toAirport = airportResolver.resolve(routeDto.toAirport());
@@ -188,6 +214,10 @@ public class CollectionService {
 
             int saved = routePersistenceService.saveFlights(route.id(), flights);
             totalFlights.addAndGet(saved);
+        } catch (CollectionRefusedException e) {
+            // Not this route's problem and not something the next route would fare better at -
+            // the site is turning us away, so hand it back and let the run end.
+            refused.compareAndSet(null, e);
         } catch (Exception e) {
             logger.error("Failed to process route {} -> {} for {}",
                 routeDto.fromAirport(), routeDto.toAirport(), collector.airline(), e);
