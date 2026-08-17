@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The backend speaks plain HTTP on a home PC, reached either over the LAN or through
+  Tailscale. Both are private paths, so cleartext has to be allowed.
+
+  It is allowed for every host rather than a narrow list because the server address is typed
+  in by the user at runtime - it can be any RFC1918 LAN address, any 100.64/10 Tailscale
+  address, or a MagicDNS name. Android's <domain> rules only accept hostnames and exact IP
+  literals; CIDR ranges like 192.168.0.0/16 are NOT supported and silently fail to match,
+  which is what a narrower version of this file did. Since the app only ever contacts the one
+  address configured on the settings screen, permitting cleartext broadly costs little.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
