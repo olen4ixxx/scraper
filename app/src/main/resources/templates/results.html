@@ -425,7 +425,7 @@
 </head>
 <body>
     <div class="container">
-        <a th:href="@{/(from=${qFrom}, to=${qTo}, departure=${qDeparture}, departureRangeEnd=${qDepartureRangeEnd}, returnDate=${qReturnDate}, returnRangeEnd=${qReturnRangeEnd}, maxStops=${qMaxStops}, airlines=${qAirlines}, sortBy=${qSortBy}, minConnectionMinutes=${qMinConnectionMinutes}, maxConnectionMinutes=${qMaxConnectionMinutes}, stayMinDays=${qStayMinDays}, stayMaxDays=${qStayMaxDays}, allowOvernightConnection=${qAllowOvernightConnection}, allowReturnToDifferentAirport=${qAllowReturnToDifferentAirport}, allowReturnFromDifferentAirport=${qAllowReturnFromDifferentAirport}, allowGroundTransfer=${qAllowGroundTransfer}, groundTransferRadiusKm=${qGroundTransferRadiusKm}, schengenConnectionsOnly=${qSchengenConnectionsOnly})}" class="back-link">← Back to search</a>
+        <a th:href="@{/(s=${search})}" class="back-link">← Back to search</a>
         
         <div class="header">
             <h1 th:text="${from} + ' → ' + ${to}">Warsaw → Anywhere</h1>
