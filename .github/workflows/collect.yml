@@ -28,7 +28,13 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # A WizzAir pass is the long one: four requests a route over 1,113 routes, at the
+    # roughly 25 requests a minute they turn out to allow once backoff is accounted for,
+    # is close to three hours. 180 sat right on that line, which meant the pass was
+    # being cut off just short of finishing every time. Being cut off is survivable now
+    # that routes are visited longest-untried first - the next run picks up where this
+    # one stopped - but there is no reason to guarantee it.
+    timeout-minutes: 240
     strategy:
       # One airline per job: they are independent, a failure against one shouldn't
       # stop the rest, and each runner has its own address so no single airline sees
@@ -95,7 +101,7 @@ jobs:
           fi
 
           curl -sf -X POST "http://localhost:8080/collect/${{ matrix.airline }}?rediscoverRoutes=$REDISCOVER" \
-            --max-time 10800
+            --max-time 13800
           COLLECT_STATUS=$?
 
           kill $APP_PID 2>/dev/null || true
