@@ -48,6 +48,14 @@ public class CollectionService {
     // fire a few minutes late too. Without this margin, routes collected slightly late in
     // one run would still read as "fresh" 5h later and get skipped for a full extra cycle.
     private static final Duration FRESHNESS_WINDOW = Duration.ofHours(4);
+    /**
+     * How much of a flight's price history is worth keeping. Recording only changes stopped the
+     * database growing by three quarters of a million rows a day; it did not stop it growing,
+     * because prices really do move - Ryanair's alone about 135,000 times a day. Twenty points is
+     * two or three weeks of movement on a typical flight, enough for a graph to be worth looking
+     * at, and it puts a ceiling on a table that otherwise has none.
+     */
+    private static final int PRICE_POINTS_KEPT_PER_FLIGHT = 20;
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
@@ -120,6 +128,11 @@ public class CollectionService {
             if (flights > 0 || priceless > 0) {
                 logger.info("Cleared {} departed flights ({} price rows) and {} left without a price",
                     flights, prices, priceless);
+            }
+            int trimmed = priceSnapshotRepository.trimHistoryToNewest(PRICE_POINTS_KEPT_PER_FLIGHT);
+            if (trimmed > 0) {
+                logger.info("Trimmed {} price points beyond the newest {} per flight",
+                    trimmed, PRICE_POINTS_KEPT_PER_FLIGHT);
             }
         } catch (Exception e) {
             // Housekeeping must never be the reason a collection run fails.
