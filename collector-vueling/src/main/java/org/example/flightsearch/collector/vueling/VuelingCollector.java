@@ -3,7 +3,9 @@ package org.example.flightsearch.collector.vueling;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.collector.RateLimiter;
+import org.example.flightsearch.collector.Refusal;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Vueling flies nothing to or from Poland - confirmed against their own API, which answers
@@ -54,9 +57,12 @@ public class VuelingCollector implements AirlineCollector {
     // query string becomes unreasonable.
     private static final int DESTINATION_BATCH = 40;
 
+    private static final int CONSECUTIVE_REFUSALS_BEFORE_ABANDONING = 25;
+
     private final WebClient webClient;
     private final AirportResolver airportResolver;
     private final RateLimiter rateLimiter = new RateLimiter(400);
+    private final AtomicInteger consecutiveRefusals = new AtomicInteger();
 
     public VuelingCollector(WebClient webClient, AirportResolver airportResolver) {
         this.webClient = webClient;
@@ -167,10 +173,24 @@ public class VuelingCollector implements AirlineCollector {
             if (fares.isArray()) {
                 fares.forEach(result::add);
             }
+            consecutiveRefusals.set(0);
+            rateLimiter.recovered();
             return result;
         } catch (Exception e) {
             // A route Vueling doesn't fly answers 404 "best prices not found", so this is the
             // normal outcome for most pairs during discovery, not a failure worth shouting about.
+            // Being refused is a different thing entirely, and treating the two alike is how a
+            // scan quietly concludes an airline flies nowhere - see Refusal.
+            if (Refusal.is(e)) {
+                rateLimiter.backOff();
+                int inARow = consecutiveRefusals.incrementAndGet();
+                if (inARow >= CONSECUTIVE_REFUSALS_BEFORE_ABANDONING) {
+                    throw new CollectionRefusedException(Airline.VUELING, inARow, e.getMessage());
+                }
+                logger.debug("Vueling refused {} -> {}: {}", origin, destinations, e.getMessage());
+                return List.of();
+            }
+            consecutiveRefusals.set(0);
             logger.debug("No Vueling prices for {} -> {}: {}", origin, destinations, e.getMessage());
             return List.of();
         }

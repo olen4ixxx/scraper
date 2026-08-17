@@ -3,7 +3,9 @@ package org.example.flightsearch.collector.volotea;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.collector.RateLimiter;
+import org.example.flightsearch.collector.Refusal;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -21,6 +23,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Volotea's published timetable, one static file per city pair. The booking site itself sits
@@ -48,7 +51,10 @@ public class VoloteaCollector implements AirlineCollector {
     private final AirportResolver airportResolver;
     // Static files on a bucket rather than a booking engine, so this can be a little brisker
     // than the interval used against airlines' live fare APIs.
+    private static final int CONSECUTIVE_REFUSALS_BEFORE_ABANDONING = 25;
+
     private final RateLimiter rateLimiter = new RateLimiter(250);
+    private final AtomicInteger consecutiveRefusals = new AtomicInteger();
     private final Map<String, List<FlightDto>> schedulesByRoute = new ConcurrentHashMap<>();
 
     public VoloteaCollector(WebClient webClient, AirportResolver airportResolver) {
@@ -130,8 +136,23 @@ public class VoloteaCollector implements AirlineCollector {
             if (!directions.isEmpty()) {
                 logger.info("Volotea flies {} ({} directions priced)", pair, directions.size());
             }
+            consecutiveRefusals.set(0);
+            rateLimiter.recovered();
             return directions;
         } catch (Exception e) {
+            // A 404 here means Volotea doesn't fly the pair, which is an answer. Being turned
+            // away is not, and filing it as "no schedule" is how a scan can quietly conclude that
+            // an airline flies nowhere - see Refusal.
+            if (Refusal.is(e)) {
+                rateLimiter.backOff();
+                int inARow = consecutiveRefusals.incrementAndGet();
+                if (inARow >= CONSECUTIVE_REFUSALS_BEFORE_ABANDONING) {
+                    throw new CollectionRefusedException(Airline.VOLOTEA, inARow, e.getMessage());
+                }
+                logger.debug("Volotea refused {}: {}", pair, e.getMessage());
+                return List.of();
+            }
+            consecutiveRefusals.set(0);
             logger.debug("No Volotea schedule for {}: {}", pair, e.getMessage());
             return List.of();
         }
