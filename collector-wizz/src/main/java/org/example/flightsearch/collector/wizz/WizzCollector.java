@@ -17,6 +17,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -110,12 +111,13 @@ public class WizzCollector implements AirlineCollector {
         }
 
         Set<String> known = airportResolver.knownIataCodes();
+        Set<String> metropolitanAreas = metropolitanAreas(map);
         List<RouteDto> routes = new ArrayList<>();
         int skippedUnknown = 0;
 
         for (JsonNode city : map.path("cities")) {
             String origin = city.path("iata").asText(null);
-            if (origin == null || !known.contains(origin)) {
+            if (origin == null || !known.contains(origin) || metropolitanAreas.contains(origin)) {
                 continue;
             }
             for (JsonNode connection : city.path("connections")) {
@@ -123,7 +125,7 @@ public class WizzCollector implements AirlineCollector {
                     continue;
                 }
                 String destination = connection.path("iata").asText(null);
-                if (destination == null) {
+                if (destination == null || metropolitanAreas.contains(destination)) {
                     continue;
                 }
                 // Airports outside the reference dataset have no metadata to save them under,
@@ -155,6 +157,24 @@ public class WizzCollector implements AirlineCollector {
             flights.addAll(parseFares(fetchFareChart(route, centre), today, horizon));
         }
         return flights;
+    }
+
+    /**
+     * The codes standing for a whole city rather than an airport - ROM for Rome, LON for London,
+     * WSW for Warsaw. The map lists them among the cities and connects them like anything else,
+     * so taken at face value they add a second copy of every route already covered by the real
+     * airports underneath them: 393 routes that are Fiumicino and Ciampino counted again as
+     * "Rome". They give themselves away by appearing as the "mac" of the airports they group.
+     */
+    private static Set<String> metropolitanAreas(JsonNode map) {
+        Set<String> macs = new HashSet<>();
+        for (JsonNode city : map.path("cities")) {
+            String mac = city.path("mac").asText(null);
+            if (mac != null && !mac.isBlank()) {
+                macs.add(mac);
+            }
+        }
+        return macs;
     }
 
     private JsonNode fetchMap() {
