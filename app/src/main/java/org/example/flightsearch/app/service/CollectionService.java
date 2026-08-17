@@ -11,6 +11,7 @@ import org.example.flightsearch.db.entity.RouteEntity;
 import org.example.flightsearch.db.repository.FlightRepository;
 import org.example.flightsearch.db.repository.PriceSnapshotRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
+import org.example.flightsearch.db.repository.SavedSearchRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -56,6 +57,12 @@ public class CollectionService {
      * at, and it puts a ceiling on a table that otherwise has none.
      */
     private static final int PRICE_POINTS_KEPT_PER_FLIGHT = 20;
+    /**
+     * How long a results address stays reachable after the last time anyone opened it. Long
+     * enough that a link sent to someone still works when they get round to it; short enough
+     * that the searches nobody ever returns to do not accumulate forever.
+     */
+    private static final Duration SAVED_SEARCH_LIFETIME = Duration.ofDays(90);
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
@@ -63,19 +70,22 @@ public class CollectionService {
     private final RouteRepository routeRepository;
     private final FlightRepository flightRepository;
     private final PriceSnapshotRepository priceSnapshotRepository;
+    private final SavedSearchRepository savedSearchRepository;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
                              RoutePersistenceService routePersistenceService,
                              RouteRepository routeRepository,
                              FlightRepository flightRepository,
-                             PriceSnapshotRepository priceSnapshotRepository) {
+                             PriceSnapshotRepository priceSnapshotRepository,
+                             SavedSearchRepository savedSearchRepository) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
         this.routeRepository = routeRepository;
         this.flightRepository = flightRepository;
         this.priceSnapshotRepository = priceSnapshotRepository;
+        this.savedSearchRepository = savedSearchRepository;
     }
 
     public void collectAll() {
@@ -133,6 +143,11 @@ public class CollectionService {
             if (trimmed > 0) {
                 logger.info("Trimmed {} price points beyond the newest {} per flight",
                     trimmed, PRICE_POINTS_KEPT_PER_FLIGHT);
+            }
+            int forgotten = savedSearchRepository.deleteUnusedSince(Instant.now().minus(SAVED_SEARCH_LIFETIME));
+            if (forgotten > 0) {
+                logger.info("Forgot {} saved searches nobody had opened in {} days",
+                    forgotten, SAVED_SEARCH_LIFETIME.toDays());
             }
         } catch (Exception e) {
             // Housekeeping must never be the reason a collection run fails.

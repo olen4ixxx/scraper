@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -156,6 +156,8 @@ public class WebController {
     }
 
     private String render(SearchRequest request, String search, Model model) {
+        // Keeps an address that people still follow from being swept up as unused.
+        savedSearches.markUsed(search);
         List<SearchResult> results = searchService.search(request);
 
         model.addAttribute("from", formatFromDisplay(request.from()));
@@ -214,8 +216,13 @@ public class WebController {
         return names;
     }
 
+    /**
+     * An EnumSet rather than a HashSet, so the same choice of airlines always comes out in the
+     * same order. A saved search is compared against the stored one to decide whether it already
+     * has a name, and an unordered set would make two identical searches look different.
+     */
     private static Set<Airline> airlineSet(List<String> airlines) {
-        Set<Airline> parsed = new HashSet<>();
+        Set<Airline> parsed = EnumSet.noneOf(Airline.class);
         if (airlines != null) {
             for (String airline : airlines) {
                 try {

@@ -1,12 +1,14 @@
 package org.example.flightsearch.app.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.common.dto.SearchRequest;
+import org.example.flightsearch.db.repository.SavedSearchRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -21,48 +23,86 @@ import java.util.Optional;
  * <p>The name is built from the parts of a search someone would actually recognise - where from,
  * where to, and when - rather than a random string, so the address still says what it is. Two
  * different searches can agree on all three (same route and date, different filters); the second
- * one gets a number after it.
+ * one gets a number after it, and a search identical to one already named simply gets that name
+ * back rather than a second one.
  *
- * <p>Held in memory and bounded, oldest dropped first. A restart therefore forgets them, and a
- * link that outlives the process resolves to nothing - the results page sends those back to the
- * search form rather than showing an error. That is the trade for not putting a table behind
- * something whose whole job is to make an address shorter.
+ * <p>Stored in the database rather than in memory. In memory a link stopped working the moment
+ * the process restarted, which on this hosting means every deploy and every idle period - a
+ * link sent to someone in the morning would not open in the afternoon, which rather defeats
+ * having a short address to send.
  */
 @Service
 public class SavedSearches {
-    /**
-     * Enough that a session's worth of searching stays reachable by the back button, small enough
-     * that nothing has to be evicted on a timer.
-     */
-    private static final int REMEMBERED = 500;
+    private static final Logger logger = LoggerFactory.getLogger(SavedSearches.class);
     private static final DateTimeFormatter DAY_AND_MONTH = DateTimeFormatter.ofPattern("ddMMM", Locale.ENGLISH);
+    /** Enough attempts to get past a genuinely contested name without spinning on a fault. */
+    private static final int NAME_ATTEMPTS = 50;
 
-    private final Map<String, SearchRequest> byName = new LinkedHashMap<>(64, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, SearchRequest> eldest) {
-            return size() > REMEMBERED;
-        }
-    };
+    private final SavedSearchRepository repository;
+    private final ObjectMapper mapper;
 
-    public synchronized String save(SearchRequest request) {
-        String base = name(request);
-        String name = base;
-        for (int suffix = 2; byName.containsKey(name) && !request.equals(byName.get(name)); suffix++) {
-            name = base + "-" + suffix;
-        }
-        byName.put(name, request);
-        return name;
+    public SavedSearches(SavedSearchRepository repository, ObjectMapper mapper) {
+        this.repository = repository;
+        this.mapper = mapper;
     }
 
-    public synchronized Optional<SearchRequest> find(String name) {
-        return Optional.ofNullable(byName.get(name));
+    public String save(SearchRequest request) {
+        String json;
+        try {
+            json = mapper.writeValueAsString(request);
+        } catch (Exception e) {
+            // Without a stored search there is no name to give out, and the caller needs one.
+            throw new IllegalStateException("Could not store the search", e);
+        }
+
+        String base = name(request);
+        for (int attempt = 1; attempt <= NAME_ATTEMPTS; attempt++) {
+            String candidate = attempt == 1 ? base : base + "-" + attempt;
+            if (repository.claim(candidate, json) == 1) {
+                return candidate;
+            }
+            // Taken - by this very search, in which case reuse it, or by a different one, in
+            // which case try the next number along.
+            if (find(candidate).filter(request::equals).isPresent()) {
+                repository.markUsed(candidate);
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Could not find a free name for the search starting from " + base);
+    }
+
+    public Optional<SearchRequest> find(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return repository.findRequestByName(name).flatMap(this::parse);
+    }
+
+    /** Marks a name as still in use, so housekeeping keeps the addresses people actually follow. */
+    public void markUsed(String name) {
+        try {
+            repository.markUsed(name);
+        } catch (Exception e) {
+            // Nothing here is worth failing a page view over.
+            logger.debug("Could not mark search {} as used: {}", name, e.getMessage());
+        }
+    }
+
+    private Optional<SearchRequest> parse(String json) {
+        try {
+            return Optional.of(mapper.readValue(json, SearchRequest.class));
+        } catch (Exception e) {
+            // A row written by an older version whose fields have since changed. The name simply
+            // doesn't resolve, and the results page sends the visitor to the search form.
+            logger.warn("Stored search could not be read back, treating it as gone: {}", e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private static String name(SearchRequest request) {
-        String from = slug(request.from());
-        String to = slug(firstDestination(request.to()));
-        String when = request.departure().format(DAY_AND_MONTH).toLowerCase(Locale.ENGLISH);
-        return from + "-" + to + "-" + when;
+        return slug(request.from())
+            + "-" + slug(firstDestination(request.to()))
+            + "-" + request.departure().format(DAY_AND_MONTH).toLowerCase(Locale.ENGLISH);
     }
 
     /** A search can list several destinations; the first one is the one worth naming it after. */
@@ -80,6 +120,11 @@ public class SavedSearches {
             return "any";
         }
         String cleaned = value.toLowerCase(Locale.ENGLISH).replaceAll("[^a-z0-9]+", "");
-        return cleaned.isEmpty() ? "any" : cleaned;
+        if (cleaned.isEmpty()) {
+            return "any";
+        }
+        // The column holds 120 characters and three of these go into a name; a country typed out
+        // in full has no business using all of it.
+        return cleaned.length() > 30 ? cleaned.substring(0, 30) : cleaned;
     }
 }
