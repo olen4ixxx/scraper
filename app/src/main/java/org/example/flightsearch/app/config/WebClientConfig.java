@@ -14,7 +14,9 @@ import java.util.concurrent.TimeUnit;
 
 @Configuration
 public class WebClientConfig {
-    
+
+    private static final String USER_AGENT = "azair-collector/1.0";
+
     @Bean
     public WebClient webClient() {
         HttpClient httpClient = HttpClient.create()
@@ -26,6 +28,12 @@ public class WebClientConfig {
         
         return WebClient.builder()
             .clientConnector(new ReactorClientHttpConnector(httpClient))
+            // Say who is calling. Some of these endpoints turn away a client that sends no
+            // User-Agent or an obviously scripted one - Transavia's airport list answers 403 to
+            // both, and 200 to this - so a name is needed either way, and the honest one is the
+            // right choice: it identifies the caller instead of imitating a browser, and gives
+            // anyone reading their logs something to recognise and get in touch about.
+            .defaultHeader("User-Agent", USER_AGENT)
             // Fare responses are small, but a whole route network is not: WizzAir publishes
             // theirs as a single 666KB document, against a 256KB default that fails the request
             // after it has already been fetched successfully.
