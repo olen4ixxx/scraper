@@ -3,6 +3,7 @@ package org.example.flightsearch.collector.transavia;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.collector.RateLimiter;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
@@ -45,12 +46,22 @@ public class TransaviaCollector implements AirlineCollector {
     private static final int MONTHS_AHEAD = 3;
 
     /**
-     * Seeds for route discovery, not a hardcoded network: Transavia flies out of bases, so
-     * asking every airport we know about whether it connects to one of these finds the
-     * network without probing all 20,000 ordered pairs. Both are confirmed live rather than
-     * assumed - Amsterdam is the Dutch base, Paris Orly the French one.
+     * Transavia does publish the airports it serves, at www.transavia.com/api/airports, and that
+     * one request would replace every probe below. It is not used, because that path sits behind
+     * Cloudflare and answers our client with a challenge - "Cf-Mitigated: challenge" - where the
+     * fare calendar on the same host answers normally. Getting past a challenge means imitating a
+     * browser closely enough to be mistaken for one, which is not something this project does.
+     * So the network is worked out from the airports we already have metadata for.
      */
-    private static final List<String> DISCOVERY_SEEDS = List.of("AMS", "ORY");
+    /**
+     * Transavia is a base carrier: essentially every route it flies has one end at a base, so
+     * asking each base whether it serves each airport finds the network without probing every
+     * ordered pair. These eight are the ones that answered with fares when asked - Groningen and
+     * Bordeaux, also sometimes described as bases, did not, and are left out rather than costing
+     * a fruitless 189 probes each.
+     */
+    private static final List<String> BASES =
+        List.of("AMS", "RTM", "EIN", "ORY", "NTE", "LYS", "MPL", "BRU");
 
     /**
      * Discovery asks about thousands of pairs, and Transavia starts refusing when asked this
@@ -63,7 +74,8 @@ public class TransaviaCollector implements AirlineCollector {
 
     private final WebClient webClient;
     private final AirportResolver airportResolver;
-    private final RateLimiter rateLimiter = new RateLimiter(1200);
+    // 1.2s still drew occasional refusals over a long scan; 1.5s ran a probe series clean.
+    private final RateLimiter rateLimiter = new RateLimiter(1500);
     private final AtomicInteger consecutiveRefusals = new AtomicInteger();
 
     public TransaviaCollector(WebClient webClient, AirportResolver airportResolver) {
@@ -76,43 +88,49 @@ public class TransaviaCollector implements AirlineCollector {
         return Airline.TRANSAVIA;
     }
 
+    /**
+     * One probe per base per airport, and that is the whole scan.
+     *
+     * <p>It used to be two phases: ask every known airport whether it connects to Amsterdam or
+     * Orly, then ask every pair among the ones that did. That second phase was the expensive
+     * part and almost entirely wasted - 3,800 probes to confirm what the base structure already
+     * says, that Eindhoven does not fly to Faro via anywhere except a base. Asking each base
+     * directly covers the same network in a quarter of the requests and covers it better: the
+     * six bases beyond the two original seeds used to be reachable only through that sweep.
+     */
     @Override
     public List<RouteDto> loadRoutes() {
-        List<String> airports = new ArrayList<>(airportResolver.knownIataCodes());
-        logger.info("Discovering Transavia network among {} known airports, seeded from {}...",
-            airports.size(), DISCOVERY_SEEDS);
-
         consecutiveRefusals.set(0);
 
-        // Anything Transavia serves at all reaches one of its bases, so a couple of probes per
-        // airport is enough to tell whether it is worth looking at further.
-        Set<String> inNetwork = new LinkedHashSet<>(DISCOVERY_SEEDS);
-        for (String airport : airports) {
-            if (beingRefused()) {
-                return abandonDiscovery();
-            }
-            if (DISCOVERY_SEEDS.contains(airport)) {
-                continue;
-            }
-            for (String seed : DISCOVERY_SEEDS) {
-                if (isServed(airport, seed) || isServed(seed, airport)) {
-                    inNetwork.add(airport);
-                    break;
-                }
-            }
-        }
-        logger.info("Transavia serves {} of the airports we know about", inNetwork.size());
+        List<String> airports = new ArrayList<>(airportResolver.knownIataCodes());
+        logger.info("Discovering the Transavia network across {} known airports, from {} bases",
+            airports.size(), BASES);
 
+        // A scheduled carrier flies a route in both directions, so one probe settles the pair.
         List<RouteDto> routes = new ArrayList<>();
-        for (String origin : inNetwork) {
-            for (String destination : inNetwork) {
+        Set<String> pairs = new LinkedHashSet<>();
+        for (String base : BASES) {
+            int found = 0;
+            for (String airport : airports) {
+                if (airport.equals(base)) {
+                    continue;
+                }
                 if (beingRefused()) {
-                    return abandonDiscovery();
+                    throw new CollectionRefusedException(
+                        Airline.TRANSAVIA, consecutiveRefusals.get(), "refused during route discovery");
                 }
-                if (!origin.equals(destination) && isServed(origin, destination)) {
-                    routes.add(new RouteDto(null, Airline.TRANSAVIA, origin, destination));
+                if (!isServed(base, airport)) {
+                    continue;
                 }
+                if (pairs.add(base + "-" + airport)) {
+                    routes.add(new RouteDto(null, Airline.TRANSAVIA, base, airport));
+                }
+                if (pairs.add(airport + "-" + base)) {
+                    routes.add(new RouteDto(null, Airline.TRANSAVIA, airport, base));
+                }
+                found++;
             }
+            logger.info("Transavia serves {} destinations from {}", found, base);
         }
 
         logger.info("Loaded {} Transavia routes total", routes.size());
@@ -123,23 +141,16 @@ public class TransaviaCollector implements AirlineCollector {
         return consecutiveRefusals.get() >= CONSECUTIVE_REFUSALS_BEFORE_ABANDONING;
     }
 
-    /**
-     * Returning nothing rather than a partial network on purpose: a half-scanned network saved
-     * as if it were complete would be reused by every later run, quietly leaving out the routes
-     * the scan never reached.
-     */
-    private List<RouteDto> abandonDiscovery() {
-        logger.warn("Abandoning Transavia discovery - {} requests refused in a row, so they are "
-            + "throttling us and the rest of the scan would only add to it. Nothing is saved from "
-            + "a partial scan; try again later.", consecutiveRefusals.get());
-        return List.of();
-    }
-
     @Override
     public List<FlightDto> loadFlights(RouteDto route) {
         logger.info("Loading Transavia fares for route {} -> {}", route.fromAirport(), route.toAirport());
         // One request covers the whole horizon - the endpoint takes a month range.
-        return parseFares(requestFares(route.fromAirport(), route.toAirport()));
+        List<FlightDto> flights = parseFares(requestFares(route.fromAirport(), route.toAirport()));
+        if (beingRefused()) {
+            throw new CollectionRefusedException(
+                Airline.TRANSAVIA, consecutiveRefusals.get(), "refused while loading fares");
+        }
+        return flights;
     }
 
     private boolean isServed(String origin, String destination) {
