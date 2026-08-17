@@ -183,7 +183,38 @@ public class CollectionService {
             }
             logger.info("No {} routes stored yet - discovering them", collector.airline());
         }
-        return collector.loadRoutes();
+
+        List<RouteDto> discovered = collector.loadRoutes();
+        storeRoutes(collector, discovered);
+        return discovered;
+    }
+
+    /**
+     * Writes the discovered network down before any fares are fetched.
+     *
+     * <p>Routes used to reach the database only as a side effect of collecting a route's fares,
+     * which meant a discovery that finished was still thrown away if the fare pass behind it did
+     * not. Transavia showed what that costs: a 29-minute scan found 364 routes, the pass was cut
+     * short 30 routes in, and 30 was what the next run reused - a tenth of the network, stored
+     * with nothing to say it was partial.
+     */
+    private void storeRoutes(AirlineCollector collector, List<RouteDto> routes) {
+        int stored = 0;
+        for (RouteDto routeDto : routes) {
+            Optional<Airport> fromAirport = airportResolver.resolve(routeDto.fromAirport());
+            Optional<Airport> toAirport = airportResolver.resolve(routeDto.toAirport());
+            if (fromAirport.isEmpty() || toAirport.isEmpty()) {
+                continue;
+            }
+            try {
+                routePersistenceService.ensureRoute(routeDto, fromAirport.get(), toAirport.get());
+                stored++;
+            } catch (Exception e) {
+                logger.warn("Could not store discovered route {} -> {} for {}: {}",
+                    routeDto.fromAirport(), routeDto.toAirport(), collector.airline(), e.getMessage());
+            }
+        }
+        logger.info("Stored {} discovered {} routes before collecting fares", stored, collector.airline());
     }
 
     private void processRoute(AirlineCollector collector, RouteDto routeDto, AtomicInteger totalFlights,
