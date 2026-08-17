@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Persists a single route (its airports + flights) in its own transaction, so that
@@ -109,7 +110,16 @@ public class RoutePersistenceService {
             routeId, flightDto.flightNumber(), departure
         ).ifPresentOrElse(
             existingFlight -> {
-                logger.debug("Flight {} already exists, adding price snapshot", flightDto.flightNumber());
+                // Only when it has actually moved. A price history is a step function - it is
+                // fully described by the points where it changes - so recording the same fare
+                // again on every pass adds no information and a great deal of rows: of 2.35
+                // million snapshots, 1.44 million were a repeat of the price before them, and
+                // the table had grown to 366MB of a 540MB allowance. Re-collecting an unchanged
+                // fare is the normal case, not the exception.
+                if (unchangedSince(existingFlight.id(), flightDto)) {
+                    return;
+                }
+                logger.debug("Flight {} has a new price, recording it", flightDto.flightNumber());
                 PriceSnapshotEntity priceSnapshot = new PriceSnapshotEntity(
                     null,
                     existingFlight.id(),
@@ -142,5 +152,19 @@ public class RoutePersistenceService {
                 priceSnapshotRepository.save(priceSnapshot);
             }
         );
+    }
+
+    /**
+     * Whether the latest recorded price for this flight already says what we just fetched.
+     * Currency is compared too - the same number in a different currency is a different price,
+     * not the same one.
+     */
+    private boolean unchangedSince(Long flightId, FlightDto flightDto) {
+        // Objects.equals, not ==: both prices are boxed Doubles, so == would compare references
+        // and never once report a repeat.
+        return priceSnapshotRepository.findLatestByFlightId(flightId)
+            .filter(latest -> Objects.equals(latest.price(), flightDto.price())
+                && Objects.equals(latest.currency(), flightDto.currency()))
+            .isPresent();
     }
 }

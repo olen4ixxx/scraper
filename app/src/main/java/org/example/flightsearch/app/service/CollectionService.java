@@ -8,7 +8,6 @@ import org.example.flightsearch.common.dto.RouteDto;
 import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.common.model.Airport;
 import org.example.flightsearch.db.entity.RouteEntity;
-import org.example.flightsearch.db.repository.FlightRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,9 +37,9 @@ import java.util.concurrent.atomic.AtomicReference;
 public class CollectionService {
     private static final Logger logger = LoggerFactory.getLogger(CollectionService.class);
     private static final int ROUTE_CONCURRENCY = 8;
-    // A route with any price collected more recently than this is skipped - what makes a
-    // long run interruptible: stop it anytime, run collection again and it only fetches
-    // what's missing or stale instead of starting over from scratch. Kept well under the
+    // A route asked about more recently than this is skipped - what makes a long run
+    // interruptible: stop it anytime, run collection again and it only fetches what's
+    // missing or stale instead of starting over from scratch. Kept well under the
     // 5h minimum gap between scheduled runs (07/12/17/22 CEST), not equal to it - a run
     // doesn't collect every route at exactly its start time (boot + discovery + queueing
     // delay each route's actual collection by minutes), and GitHub's own cron trigger can
@@ -51,18 +50,15 @@ public class CollectionService {
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
     private final RoutePersistenceService routePersistenceService;
-    private final FlightRepository flightRepository;
     private final RouteRepository routeRepository;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
                              RoutePersistenceService routePersistenceService,
-                             FlightRepository flightRepository,
                              RouteRepository routeRepository) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
-        this.flightRepository = flightRepository;
         this.routeRepository = routeRepository;
     }
 
@@ -248,8 +244,12 @@ public class CollectionService {
 
             RouteEntity route = routePersistenceService.ensureRoute(routeDto, fromAirport.get(), toAirport.get());
 
+            // On when we last asked, not on whether that produced a row. Prices are only
+            // recorded when they move, so a route whose fare is steady writes nothing for days -
+            // judged by its data it would look permanently uncollected and be re-fetched every
+            // pass, which is exactly the work this check exists to avoid.
             Instant since = Instant.now().minus(FRESHNESS_WINDOW);
-            if (flightRepository.existsFreshDataForRoute(route.id(), since)) {
+            if (route.lastAttemptedAt() != null && route.lastAttemptedAt().isAfter(since)) {
                 skippedFresh.incrementAndGet();
                 return;
             }

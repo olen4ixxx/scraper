@@ -83,16 +83,4 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         @Param("from") Instant from,
         @Param("to") Instant to
     );
-
-    // Lets collection be interrupted and resumed later (even the next day) without redoing
-    // work: a route with any price collected since the cutoff is considered "done for now"
-    // and skipped, so re-running collection only fetches routes that are missing or stale.
-    @Query("""
-        SELECT EXISTS (
-            SELECT 1 FROM flight f
-            JOIN price_snapshot ps ON ps.flight_id = f.id
-            WHERE f.route_id = :routeId AND ps.collected_at >= :since
-        )
-        """)
-    boolean existsFreshDataForRoute(@Param("routeId") Long routeId, @Param("since") Instant since);
 }
