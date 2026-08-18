@@ -14,6 +14,7 @@ import org.example.flightsearch.db.repository.RouteRepository;
 import org.example.flightsearch.db.repository.SavedSearchRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -63,6 +64,24 @@ public class CollectionService {
      * that the searches nobody ever returns to do not accumulate forever.
      */
     private static final Duration SAVED_SEARCH_LIFETIME = Duration.ofDays(90);
+    /**
+     * How long a single pass is allowed to run before it stops of its own accord and reports
+     * what it managed.
+     *
+     * <p>A full WizzAir pass is now about six and a half hours - 2,483 routes at four requests
+     * each, at the rate they allow - and a GitHub job cannot run longer than six hours whatever
+     * the timeout says. So a pass that insists on finishing is a pass that always ends by being
+     * killed: the first scheduled run after the network was expanded collected 872 routes and
+     * 13,573 prices, all of it saved, and still reported failure because the request carrying it
+     * was cut off mid-flight.
+     *
+     * <p>Running out of time is a normal outcome here, not a failure. Routes are visited
+     * longest-untried first, so a pass that stops halfway leaves the next one starting where it
+     * left off, and the network comes round in two passes instead of one. What matters is that
+     * the run ends on its own terms - saving what it has and saying how far it got - rather than
+     * being severed, which reports as broken and tells nobody anything.
+     */
+    private static final int DEFAULT_PASS_BUDGET_MINUTES = 210;
 
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
@@ -71,6 +90,7 @@ public class CollectionService {
     private final FlightRepository flightRepository;
     private final PriceSnapshotRepository priceSnapshotRepository;
     private final SavedSearchRepository savedSearchRepository;
+    private final Duration passBudget;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
@@ -78,7 +98,8 @@ public class CollectionService {
                              RouteRepository routeRepository,
                              FlightRepository flightRepository,
                              PriceSnapshotRepository priceSnapshotRepository,
-                             SavedSearchRepository savedSearchRepository) {
+                             SavedSearchRepository savedSearchRepository,
+                             @Value("${collector.pass-budget-minutes:" + DEFAULT_PASS_BUDGET_MINUTES + "}") long passBudgetMinutes) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
@@ -86,6 +107,7 @@ public class CollectionService {
         this.flightRepository = flightRepository;
         this.priceSnapshotRepository = priceSnapshotRepository;
         this.savedSearchRepository = savedSearchRepository;
+        this.passBudget = Duration.ofMinutes(passBudgetMinutes);
     }
 
     public void collectAll() {
@@ -173,13 +195,15 @@ public class CollectionService {
             // their own threads, so a refusal can't simply propagate out of here - it has to be
             // handed back. Once it is, the remaining routes are dropped rather than sent.
             AtomicReference<RuntimeException> refused = new AtomicReference<>();
+            AtomicInteger ranOutOfTime = new AtomicInteger();
+            // From the start of the run, not from here, so that route discovery counts against the
+            // budget too - Volotea's weekly scan alone is the better part of two hours, and a
+            // budget starting after it would let a run overrun the job that carries it.
+            Instant deadline = Instant.ofEpochMilli(startTime).plus(passBudget);
 
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 for (RouteDto routeDto : routes) {
                     executor.submit(() -> {
-                        if (refused.get() != null) {
-                            return;
-                        }
                         try {
                             concurrencyLimit.acquire();
                         } catch (InterruptedException e) {
@@ -187,6 +211,18 @@ public class CollectionService {
                             return;
                         }
                         try {
+                            // Checked here, once this route has actually got its turn, rather
+                            // than when it was queued. Every route is submitted in the first
+                            // milliseconds of the run, so a check before the wait is a check
+                            // against a deadline that is always still hours away - it would let
+                            // the whole queue through and stop nothing.
+                            if (refused.get() != null) {
+                                return;
+                            }
+                            if (Instant.now().isAfter(deadline)) {
+                                ranOutOfTime.incrementAndGet();
+                                return;
+                            }
                             processRoute(collector, routeDto, totalFlights, skippedRoutes, skippedFresh, refused);
                         } finally {
                             concurrencyLimit.release();
@@ -204,13 +240,20 @@ public class CollectionService {
                     collector.airline(), duration, totalFlights.get(), refusal.getMessage());
                 throw refusal;
             }
+            if (ranOutOfTime.get() > 0) {
+                // A normal way for a pass to end, not a fault: the network is bigger than one
+                // run's worth of time at the rate the airline allows. The next pass picks up the
+                // routes this one never reached, because they are the longest untried.
+                logger.info("{} pass ran its {} minutes and stopped with {} routes left for next time",
+                    collector.airline(), passBudget.toMinutes(), ranOutOfTime.get());
+            }
             logger.info("{} collection completed: routes={}, skipped={}, alreadyFresh={}, flights={}, duration={}ms",
                 collector.airline(), routes.size(), skippedRoutes.get(), skippedFresh.get(), totalFlights.get(), duration);
 
             // A pass that visited routes and came back with nothing is not a successful pass. It
             // used to read as one, which is how WizzAir and Transavia sat still for days behind a
             // green job.
-            int attempted = routes.size() - skippedRoutes.get() - skippedFresh.get();
+            int attempted = routes.size() - skippedRoutes.get() - skippedFresh.get() - ranOutOfTime.get();
             if (attempted > 0 && totalFlights.get() == 0) {
                 logger.error("{} collected no fares at all from {} routes - the run finished, but it "
                     + "achieved nothing, so treat this as a failure and look at why",
