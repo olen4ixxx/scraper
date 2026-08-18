@@ -45,9 +45,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * departure and arrival are stored as the placeholder ends of the day, the convention the rest
  * of the WizzAir rows already use - it keeps a date-only flight eligible as a connection, at
  * the cost of a meaningless duration. And prices come in the departure market's currency
- * whatever you ask for (NOK from Stavanger, PLN from Warsaw), so each is converted to euros
- * before storage; one that cannot be converted is dropped rather than stored as a bare number
- * that would read as euros.
+ * whatever you ask for (NOK from Stavanger, PLN from Warsaw), and are stored that way: the
+ * conversion to euros happens when a search displays them. Converting before storage froze each
+ * fare at the rate of the day it was collected, which aged badly on its own and became worse
+ * once unchanged fares stopped being rewritten - and it made the price history unreadable,
+ * because a move in the euro looked exactly like a move in the fare. A currency with no rate at
+ * all is still dropped at collection rather than stored as a number nothing can display.
  */
 public class WizzCollector implements AirlineCollector {
     private static final Logger logger = LoggerFactory.getLogger(WizzCollector.class);
@@ -254,14 +257,24 @@ public class WizzCollector implements AirlineCollector {
                 }
 
                 String currency = price.path("currencyCode").asText(null);
-                Optional<Double> euros = eurConverter.toEur(price.path("amount").asDouble(), currency);
-                if (euros.isEmpty()) {
+                double amount = price.path("amount").asDouble();
+                // Kept in the currency WizzAir quoted, and converted when a search displays it.
+                // Converting here instead froze each fare at the exchange rate of the day it was
+                // collected: a price stored three weeks ago was three weeks out of date in a way
+                // that had nothing to do with the fare, and got worse once unchanged fares
+                // stopped being rewritten. It also made the price history unreadable, because a
+                // move in the euro was indistinguishable from a move in the fare.
+                //
+                // Still checked here rather than only at display time: a currency with no rate
+                // can never be shown, and finding that out at collection is where it can be said
+                // out loud.
+                if (eurConverter.toEur(amount, currency).isEmpty()) {
                     logger.warn("Dropping a WizzAir fare priced in {} - no exchange rate for it", currency);
                     continue;
                 }
 
                 // The fare chart gives no flight number and no time of day - see the class comment.
-                flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1), euros.get(), "EUR"));
+                flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1), amount, currency));
             } catch (Exception e) {
                 logger.warn("Failed to parse a WizzAir fare entry: {}", e.getMessage());
             }

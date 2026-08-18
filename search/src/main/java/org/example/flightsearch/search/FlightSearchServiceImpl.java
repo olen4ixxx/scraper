@@ -1,6 +1,7 @@
 package org.example.flightsearch.search;
 
 import org.example.flightsearch.common.dto.PriceHistoryPoint;
+import org.example.flightsearch.common.currency.EurConverter;
 import org.example.flightsearch.common.dto.SearchRequest;
 import org.example.flightsearch.common.dto.SearchResult;
 import org.example.flightsearch.common.model.Airline;
@@ -33,6 +34,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -49,6 +51,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     // Enough to browse through and to sort meaningfully, small enough that the page stays a
     // couple of MB. Uncapped, a wide round-trip search rendered 3.5M itineraries into 18GB of
     // HTML - the search itself took 5s, the browser never finished.
+    /** Below this, in euros, a "fare" is a sentinel or a promo teaser rather than a ticket. */
+    private static final double CHEAPEST_PLAUSIBLE_FARE_EUR = 5;
     private static final int MAX_RESULTS = 500;
     // The dead hours - deliberately narrower than "when it's dark". Landing at 23:30 and
     // leaving at 00:30 is an hour's wait that happens to cross midnight, not a night spent in
@@ -67,12 +71,16 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     private final AirportRepository airportRepository;
     private final PriceSnapshotRepository priceSnapshotRepository;
 
+    private final EurConverter eurConverter;
+
     public FlightSearchServiceImpl(FlightRepository flightRepository, RouteRepository routeRepository,
-                                    AirportRepository airportRepository, PriceSnapshotRepository priceSnapshotRepository) {
+                                    AirportRepository airportRepository, PriceSnapshotRepository priceSnapshotRepository,
+                                    EurConverter eurConverter) {
         this.flightRepository = flightRepository;
         this.routeRepository = routeRepository;
         this.airportRepository = airportRepository;
         this.priceSnapshotRepository = priceSnapshotRepository;
+        this.eurConverter = eurConverter;
     }
 
     @Override
@@ -212,9 +220,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         boolean anywhere = toAirports.isEmpty();
 
         if (request.maxStops() >= 0) {
-            List<FlightWithPrice> directFlights = anywhere
+            List<FlightWithPrice> directFlights = inEuros(anywhere
                 ? flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end)
-                : flightRepository.findDirectFlightsBetweenAirports(fromAirports, toAirports, start, end);
+                : flightRepository.findDirectFlightsBetweenAirports(fromAirports, toAirports, start, end));
             for (FlightWithPrice flight : filterByAirlines(directFlights, request.airlines(), ctx)) {
                 results.add(createSearchResult(flight, ctx));
             }
@@ -463,7 +471,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         Duration minConnectionTime = effectiveMinConnectionTime(request);
         Duration maxConnectionTime = effectiveMaxConnectionTime(request);
 
-        List<FlightWithPrice> fromFlights = flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end);
+        List<FlightWithPrice> fromFlights = inEuros(
+            flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end));
         fromFlights = filterByAirlines(fromFlights, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> firstLegsByConnection = groupByConnectionAirport(fromFlights, ctx);
@@ -479,9 +488,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             .flatMap(Set::stream).collect(Collectors.toSet());
 
         Instant[] widestWindow = widestConnectionWindow(firstLegsByConnection.values(), minConnectionTime, maxConnectionTime);
-        List<FlightWithPrice> candidateSecondLegs = anywhere
+        List<FlightWithPrice> candidateSecondLegs = inEuros(anywhere
             ? flightRepository.findFlightsFromAnyDestinationFromAirports(allCandidateOrigins, widestWindow[0], widestWindow[1])
-            : flightRepository.findDirectFlightsBetweenAirports(allCandidateOrigins, toAirports, widestWindow[0], widestWindow[1]);
+            : flightRepository.findDirectFlightsBetweenAirports(allCandidateOrigins, toAirports, widestWindow[0], widestWindow[1]));
         candidateSecondLegs = filterByAirlines(candidateSecondLegs, request.airlines(), ctx);
 
         Map<String, List<FlightWithPrice>> secondLegsByOrigin = groupByFromAirport(candidateSecondLegs, ctx);
@@ -787,6 +796,41 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             0,
             List.of()
         );
+    }
+
+    /**
+     * Every price a search works with, converted from the currency the airline quoted into euros.
+     *
+     * <p>This is the one place it happens, deliberately: everything downstream adds prices across
+     * legs, compares them, and sorts by them, none of which means anything across currencies -
+     * one line already sums two legs and keeps the first one's currency label, which was harmless
+     * only as long as everything was euros. Normalising on the way in keeps that true.
+     *
+     * <p>It is also where implausibly cheap rows are dropped. That filter used to live in SQL as
+     * "price >= 5", which quietly stopped meaning anything the moment prices arrived in forints
+     * as well as euros; five of one is a fare and five of the other is small change. Judged after
+     * conversion it means what it was always meant to mean - no real budget-airline fare is a
+     * euro or two.
+     */
+    private List<FlightWithPrice> inEuros(List<FlightWithPrice> flights) {
+        List<FlightWithPrice> converted = new ArrayList<>(flights.size());
+        Set<String> unconvertible = new HashSet<>();
+        for (FlightWithPrice flight : flights) {
+            Optional<Double> euros = eurConverter.toEur(flight.price(), flight.currency());
+            if (euros.isEmpty()) {
+                unconvertible.add(flight.currency());
+                continue;
+            }
+            if (euros.get() < CHEAPEST_PLAUSIBLE_FARE_EUR) {
+                continue;
+            }
+            converted.add(new FlightWithPrice(flight.id(), flight.routeId(), flight.flightNumber(),
+                flight.departure(), flight.arrival(), flight.updatedAt(), euros.get(), "EUR"));
+        }
+        if (!unconvertible.isEmpty()) {
+            logger.warn("Left {} out of the results - no exchange rate to show them in euros", unconvertible);
+        }
+        return converted;
     }
 
     private void sortResults(List<SearchResult> results, SearchRequest.SortBy sortBy) {

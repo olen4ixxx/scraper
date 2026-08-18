@@ -33,11 +33,9 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
     // price_snapshot table on every search - a sequential scan of ~650k rows to answer a
     // question about ~2400 flights, and by far the slowest part of a search.
     //
-    // "ps.price >= 5" then excludes the rare junk/sentinel prices some scrapers leave behind
-    // (e.g. a promo-teaser price under 5 that never was a real bookable fare) - a real
-    // budget-airline one-way fare is never genuinely that cheap. Applying it after the
-    // sub-select, not inside it, keeps the original meaning: a flight whose latest price is
-    // junk drops out, rather than falling back to some older price that passed the filter.
+    // Prices come back in whatever currency the airline quoted, so nothing is filtered or
+    // compared by amount here - five is a fare in euros and small change in forints. Converting
+    // to euros and discarding the junk ones happens in the search, on the way out of this.
     @Query("""
         SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
         JOIN route r ON f.route_id = r.id
@@ -50,7 +48,6 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         WHERE r.from_airport IN (:fromAirports)
         AND r.active
         AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
         ORDER BY f.departure ASC
         """)
     List<FlightWithPrice> findFlightsFromAnyDestinationFromAirports(
@@ -75,7 +72,6 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
         WHERE r.from_airport IN (:fromAirports) AND r.to_airport IN (:toAirports)
         AND r.active
         AND f.departure >= :from AND f.departure <= :to
-        AND ps.price >= 5
         ORDER BY ps.price ASC
         """)
     List<FlightWithPrice> findDirectFlightsBetweenAirports(
