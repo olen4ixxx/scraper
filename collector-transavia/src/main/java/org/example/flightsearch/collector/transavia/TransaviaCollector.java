@@ -153,9 +153,32 @@ public class TransaviaCollector implements AirlineCollector {
         return flights;
     }
 
+    /**
+     * The fares out of a response, whichever shape it arrives in.
+     *
+     * <p>Transavia used to answer with a bare array and now wraps it in {@code {"data": [...]}}.
+     * The change cost a full pass before it was noticed, and cost it silently: the parser asked
+     * whether the root was an array, got no for an answer, and reported no fares - which is
+     * exactly what a route they don't fly looks like. 332 routes came back empty with no error,
+     * no refusal and nothing in the log to say the shape had moved under us.
+     *
+     * <p>Reading both shapes means the next such change costs one of them rather than everything,
+     * and an envelope that appears tomorrow will not quietly empty the network again.
+     */
+    private static JsonNode fares(JsonNode response) {
+        if (response == null) {
+            return null;
+        }
+        if (response.isArray()) {
+            return response;
+        }
+        JsonNode wrapped = response.path("data");
+        return wrapped.isArray() ? wrapped : null;
+    }
+
     private boolean isServed(String origin, String destination) {
-        JsonNode response = requestFares(origin, destination);
-        return response != null && response.isArray() && !response.isEmpty();
+        JsonNode fares = fares(requestFares(origin, destination));
+        return fares != null && !fares.isEmpty();
     }
 
     /**
@@ -214,9 +237,10 @@ public class TransaviaCollector implements AirlineCollector {
         }
     }
 
-    private List<FlightDto> parseFares(JsonNode fares) {
+    private List<FlightDto> parseFares(JsonNode response) {
         List<FlightDto> flights = new ArrayList<>();
-        if (fares == null || !fares.isArray()) {
+        JsonNode fares = fares(response);
+        if (fares == null) {
             // A route they don't fly answers {"error":"Invalid route"} rather than an empty list.
             return flights;
         }
