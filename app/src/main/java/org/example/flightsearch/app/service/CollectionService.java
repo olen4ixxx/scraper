@@ -49,7 +49,7 @@ public class CollectionService {
     // delay each route's actual collection by minutes), and GitHub's own cron trigger can
     // fire a few minutes late too. Without this margin, routes collected slightly late in
     // one run would still read as "fresh" 5h later and get skipped for a full extra cycle.
-    private static final Duration FRESHNESS_WINDOW = Duration.ofHours(4);
+    private static final int DEFAULT_FRESHNESS_WINDOW_HOURS = 4;
     /**
      * How much of a flight's price history is worth keeping. Recording only changes stopped the
      * database growing by three quarters of a million rows a day; it did not stop it growing,
@@ -91,6 +91,7 @@ public class CollectionService {
     private final PriceSnapshotRepository priceSnapshotRepository;
     private final SavedSearchRepository savedSearchRepository;
     private final Duration passBudget;
+    private final Duration freshnessWindow;
 
     public CollectionService(List<AirlineCollector> collectors,
                              AirportResolver airportResolver,
@@ -99,7 +100,8 @@ public class CollectionService {
                              FlightRepository flightRepository,
                              PriceSnapshotRepository priceSnapshotRepository,
                              SavedSearchRepository savedSearchRepository,
-                             @Value("${collector.pass-budget-minutes:" + DEFAULT_PASS_BUDGET_MINUTES + "}") long passBudgetMinutes) {
+                             @Value("${collector.pass-budget-minutes:" + DEFAULT_PASS_BUDGET_MINUTES + "}") long passBudgetMinutes,
+                             @Value("${collector.freshness-window-hours:" + DEFAULT_FRESHNESS_WINDOW_HOURS + "}") long freshnessWindowHours) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
@@ -108,6 +110,7 @@ public class CollectionService {
         this.priceSnapshotRepository = priceSnapshotRepository;
         this.savedSearchRepository = savedSearchRepository;
         this.passBudget = Duration.ofMinutes(passBudgetMinutes);
+        this.freshnessWindow = Duration.ofHours(freshnessWindowHours);
     }
 
     public void collectAll() {
@@ -356,7 +359,7 @@ public class CollectionService {
             // recorded when they move, so a route whose fare is steady writes nothing for days -
             // judged by its data it would look permanently uncollected and be re-fetched every
             // pass, which is exactly the work this check exists to avoid.
-            Instant since = Instant.now().minus(FRESHNESS_WINDOW);
+            Instant since = Instant.now().minus(freshnessWindow);
             if (route.lastAttemptedAt() != null && route.lastAttemptedAt().isAfter(since)) {
                 skippedFresh.incrementAndGet();
                 return;

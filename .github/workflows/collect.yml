@@ -41,7 +41,14 @@ jobs:
       # the combined request rate.
       fail-fast: false
       matrix:
-        airline: [ryanair, wizzair, vueling, transavia, volotea]
+        # Transavia is missing on purpose. It answers this runner 403 to every single
+        # request - not a refusal that creeps in under load but a flat one from the very
+        # first call, while the identical requests at the identical pace answer 200 from
+        # a home connection. It blocks the address, not the rate, and GitHub's runners
+        # live in a datacentre range that plenty of sites turn away wholesale. Nothing on
+        # this side can change that, so Transavia is collected from a machine it will
+        # talk to - see collect-locally.ps1 - instead of failing here four times a day.
+        airline: [ryanair, wizzair, vueling, volotea]
 
     steps:
       - uses: actions/checkout@v4
