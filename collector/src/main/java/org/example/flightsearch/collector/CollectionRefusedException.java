@@ -12,7 +12,7 @@ import org.example.flightsearch.common.model.Airline;
  * silent version of this cost days - two airlines appeared to be collecting normally, on schedule,
  * while their tables stood still.
  */
-public class CollectionRefusedException extends RuntimeException {
+public class CollectionRefusedException extends CollectionStoppedException {
     public CollectionRefusedException(Airline airline, int consecutiveRefusals, String lastError) {
         super(String.format(
             "%s refused %d requests in a row, so this run is being stopped rather than continued "

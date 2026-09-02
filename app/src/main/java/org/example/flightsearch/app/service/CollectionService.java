@@ -1,7 +1,7 @@
 package org.example.flightsearch.app.service;
 
 import org.example.flightsearch.collector.AirlineCollector;
-import org.example.flightsearch.collector.CollectionRefusedException;
+import org.example.flightsearch.collector.CollectionStoppedException;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
@@ -374,7 +374,7 @@ public class CollectionService {
 
             int saved = routePersistenceService.saveFlights(route.id(), flights);
             totalFlights.addAndGet(saved);
-        } catch (CollectionRefusedException e) {
+        } catch (CollectionStoppedException e) {
             // Not this route's problem and not something the next route would fare better at -
             // the site is turning us away, so hand it back and let the run end.
             refused.compareAndSet(null, e);

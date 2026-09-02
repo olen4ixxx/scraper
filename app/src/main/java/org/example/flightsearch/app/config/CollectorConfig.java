@@ -8,6 +8,7 @@ import org.example.flightsearch.collector.vueling.VuelingCollector;
 import org.example.flightsearch.collector.wizz.WizzCollector;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.currency.EurConverter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -24,9 +25,10 @@ public class CollectorConfig {
 
     @Bean
     public List<AirlineCollector> collectors(WebClient webClient, AirportResolver airportResolver,
-                                              EurConverter eurConverter) {
+                                              EurConverter eurConverter,
+                                              @Value("${collector.wizz.api-version:29.14.0}") String wizzApiVersion) {
         return List.of(
-            new WizzCollector(webClient, airportResolver, eurConverter),
+            new WizzCollector(webClient, airportResolver, eurConverter, wizzApiVersion),
             new RyanairCollector(webClient),
             new VuelingCollector(webClient, airportResolver),
             new TransaviaCollector(webClient, airportResolver),

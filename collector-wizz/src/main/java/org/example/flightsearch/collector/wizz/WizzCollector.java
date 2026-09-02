@@ -3,6 +3,7 @@ package org.example.flightsearch.collector.wizz;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.flightsearch.collector.AirlineCollector;
+import org.example.flightsearch.collector.ApiMovedException;
 import org.example.flightsearch.collector.CollectionRefusedException;
 import org.example.flightsearch.collector.RateLimiter;
 import org.example.flightsearch.collector.Refusal;
@@ -14,6 +15,7 @@ import org.example.flightsearch.common.model.Airline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -59,7 +61,7 @@ public class WizzCollector implements AirlineCollector {
      * be updated when WizzAir deploys a new one. A 404 from the map endpoint is the symptom,
      * and it is logged as such rather than passed off as an empty network.
      */
-    private static final String API_BASE = "https://be.wizzair.com/29.12.0/Api";
+    private static final String API_BASE_TEMPLATE = "https://be.wizzair.com/%s/Api";
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final int DAYS_AHEAD = 60;
     // The largest interval the fare chart accepts; anything more is rejected outright.
@@ -77,6 +79,7 @@ public class WizzCollector implements AirlineCollector {
     private final WebClient webClient;
     private final AirportResolver airportResolver;
     private final EurConverter eurConverter;
+    private final String apiBase;
     /**
      * Two seconds, measured rather than guessed. A steady series at one second was allowed 45
      * requests and refused from the 46th; the same series at two seconds ran 40 for 40 with no
@@ -91,10 +94,12 @@ public class WizzCollector implements AirlineCollector {
     private final RateLimiter rateLimiter = new RateLimiter(2000);
     private final AtomicInteger consecutiveRefusals = new AtomicInteger();
 
-    public WizzCollector(WebClient webClient, AirportResolver airportResolver, EurConverter eurConverter) {
+    public WizzCollector(WebClient webClient, AirportResolver airportResolver, EurConverter eurConverter,
+                         String apiVersion) {
         this.webClient = webClient;
         this.airportResolver = airportResolver;
         this.eurConverter = eurConverter;
+        this.apiBase = String.format(API_BASE_TEMPLATE, apiVersion);
     }
 
     @Override
@@ -109,7 +114,7 @@ public class WizzCollector implements AirlineCollector {
         if (map == null) {
             logger.error("Could not load the WizzAir map from {} - a 404 means their API version has "
                 + "moved on and the path here needs updating; see the failure logged above for "
-                + "anything else", API_BASE);
+                + "anything else", apiBase);
             return List.of();
         }
 
@@ -184,7 +189,7 @@ public class WizzCollector implements AirlineCollector {
         try {
             rateLimiter.acquire();
             String json = webClient.get()
-                .uri(API_BASE + "/asset/map")
+                .uri(apiBase + "/asset/map")
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
@@ -205,7 +210,7 @@ public class WizzCollector implements AirlineCollector {
         try {
             rateLimiter.acquire();
             String json = webClient.post()
-                .uri(API_BASE + "/asset/farechart")
+                .uri(apiBase + "/asset/farechart")
                 .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()
@@ -215,6 +220,9 @@ public class WizzCollector implements AirlineCollector {
             rateLimiter.recovered();
             return mapper.readTree(json);
         } catch (Exception e) {
+            if (isNotFound(e)) {
+                throw new ApiMovedException(Airline.WIZZAIR, apiBase + "/asset/farechart");
+            }
             if (Refusal.is(e)) {
                 rateLimiter.backOff();
                 int inARow = consecutiveRefusals.incrementAndGet();
@@ -230,6 +238,20 @@ public class WizzCollector implements AirlineCollector {
                 route.fromAirport(), route.toAirport(), centre, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * A 404 here is not a route without flights - a pair they don't fly answers 400 with
+     * "InvalidArrivalStationCode". It means the path itself is gone, which for an API carrying
+     * its version in the path means the version moved.
+     */
+    private static boolean isNotFound(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof WebClientResponseException http) {
+                return http.getStatusCode().value() == 404;
+            }
+        }
+        return false;
     }
 
     private List<FlightDto> parseFares(JsonNode response, LocalDate today, LocalDate horizon) {
