@@ -1,28 +1,31 @@
+# Collects what the cloud cannot, for as long as this is up.
+#
+#   docker compose up -d        start collecting
+#   docker compose logs -f      watch it
+#   docker compose down         stop
+#
+# Stopping is always safe. Progress lives in the database, not in the container: routes are
+# visited longest-untried first and each is stamped before it is asked about, so a pass cut off
+# by a reboot, a sleep or a `down` leaves the next one resuming exactly where it stopped. There
+# is nothing to flush and nothing to wait for.
 services:
-  postgres:
-    image: postgres:17
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: flights
-      POSTGRES_USER: flights
-      POSTGRES_PASSWORD: flights
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  app:
+  collector:
     build: .
-    ports:
-      - "8080:8080"
+    # No published port. This is not the website - that runs on Render - it is one job: keep
+    # Transavia collected. Nothing needs to reach it.
     environment:
-      # Falls back to the local postgres service above when these aren't set on
-      # the host - but picks up Neon automatically once SPRING_DATASOURCE_* are
-      # set (e.g. via the persistent `setx` vars), same as running bootRun directly.
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/flights}
-      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-flights}
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-flights}
-    depends_on:
-      - postgres
-
-volumes:
-  postgres_data:
+      # The one database. The same Neon that the scheduled GitHub runs write to and the website
+      # reads from, so what this collects is live immediately and there is never a second copy
+      # to reconcile. Required rather than defaulted: a fallback to some local postgres would
+      # mean a container that looks like it is working while filling a database nobody reads.
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?set it, or this would collect into nowhere}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?set it}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?set it}
+      # Transavia is the one that needs a machine it will talk to. Any airline can be added here
+      # if you want it refreshed sooner than the cloud does it.
+      COLLECTOR_LOCAL_AIRLINES: ${COLLECTOR_LOCAL_AIRLINES:-transavia}
+      # A full Transavia pass is about ten minutes, so three hours between them keeps its prices
+      # about as fresh as the cloud keeps everyone else's without asking them for much.
+      COLLECTOR_LOCAL_INTERVAL_MINUTES: ${COLLECTOR_LOCAL_INTERVAL_MINUTES:-180}
+      COLLECTOR_ENABLED: "true"
+    restart: unless-stopped

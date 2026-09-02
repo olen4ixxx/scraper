@@ -83,6 +83,24 @@ public class CollectionService {
      */
     private static final int DEFAULT_PASS_BUDGET_MINUTES = 210;
 
+    /**
+     * How many routes a pass has to have asked about before "no fares at all" is treated as a
+     * fault rather than a thin sample.
+     *
+     * <p>Zero fares is not proof of breakage on its own - a handful of routes really can all be
+     * empty, and a pass that only reached three of them says nothing. Across a couple of dozen it
+     * does: roughly a third of routes carry fares on any given pass, so twenty-five empty ones in
+     * a row is a one-in-ten-thousand accident and an everyday symptom of the site having changed
+     * underneath us.
+     *
+     * <p>It is worth failing over because the alternative was tested twice and lost. WizzAir spent
+     * nine days behind a moved API version and Transavia longer behind a changed response shape,
+     * both reporting success four times a day - the log said so each time, and a log nobody reads
+     * is not a signal.
+     */
+    private static final int ROUTES_BEFORE_EMPTY_MEANS_BROKEN = 25;
+
+
     private final List<AirlineCollector> collectors;
     private final AirportResolver airportResolver;
     private final RoutePersistenceService routePersistenceService;
@@ -257,10 +275,15 @@ public class CollectionService {
             // used to read as one, which is how WizzAir and Transavia sat still for days behind a
             // green job.
             int attempted = routes.size() - skippedRoutes.get() - skippedFresh.get() - ranOutOfTime.get();
-            if (attempted > 0 && totalFlights.get() == 0) {
-                logger.error("{} collected no fares at all from {} routes - the run finished, but it "
-                    + "achieved nothing, so treat this as a failure and look at why",
-                    collector.airline(), attempted);
+            if (attempted >= ROUTES_BEFORE_EMPTY_MEANS_BROKEN && totalFlights.get() == 0) {
+                throw new IllegalStateException(String.format(
+                    "%s asked about %d routes and got not one fare back. That is not what an airline "
+                        + "with no seats looks like - roughly a third of routes carry fares on any "
+                        + "given pass - so something has changed at their end and is being read as "
+                        + "an empty answer. Both long silences this project has had looked exactly "
+                        + "like this: WizzAir behind a moved API version for nine days, Transavia "
+                        + "behind a changed response shape, each of them reporting success "
+                        + "throughout.", collector.airline(), attempted));
             }
 
         } catch (Exception e) {
