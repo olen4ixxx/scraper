@@ -302,10 +302,54 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            /* The tooltip is placed against this, so it can sit over the line without the card
+               growing or the layout shifting when it appears. */
+            position: relative;
         }
 
         .price-history-chart svg {
             display: block;
+            /* Reading a value is a tap, and a tap must not stop the page scrolling under it -
+               so no touch-action override here. */
+            cursor: crosshair;
+        }
+
+        .price-history-dot {
+            fill: #fff;
+            stroke-width: 1.5;
+        }
+
+        .price-history-dot.is-active {
+            r: 3.5;
+        }
+
+        /* Deliberately small and anchored to the chart. A price history is a glance, not a
+           screen: on a phone a full-width overlay would cover the very card you are comparing,
+           and you would have to dismiss it to carry on reading. */
+        .price-history-tip {
+            position: absolute;
+            bottom: calc(100% + 4px);
+            left: 0;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            font-size: 11px;
+            line-height: 1.35;
+            white-space: nowrap;
+            padding: 3px 7px;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.08s;
+            z-index: 5;
+        }
+
+        .price-history-tip.is-visible {
+            opacity: 1;
+        }
+
+        .price-history-tip b {
+            font-weight: 600;
         }
 
         .price-history-range {
@@ -590,8 +634,9 @@
             return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
         }
 
-        // Every price we've collected for this exact flight over time, as a small sparkline -
-        // "all prices we've seen for this specific flight" (azair-style price history).
+        // Every price we've collected for this exact flight over time, as a small sparkline.
+        // Only changes are recorded - re-checking a fare that hasn't moved writes nothing - so a
+        // point is a price change, which is why the label counts prices rather than checks.
         function renderPriceHistory(container, points) {
             if (!points || points.length === 0) {
                 container.innerHTML = '<div class="price-history-label">Price history</div>'
@@ -600,32 +645,93 @@
             }
             if (points.length === 1) {
                 container.innerHTML = '<div class="price-history-label">Price history</div>'
-                    + '<div class="price-history-empty">Only checked once so far (' + formatDate(points[0].collectedAt) + ')</div>';
+                    + '<div class="price-history-empty">One price so far, ' + Math.round(points[0].price)
+                    + ' ' + points[0].currency + ' on ' + formatDate(points[0].collectedAt) + '</div>';
                 return;
             }
 
             const prices = points.map(function(p) { return p.price; });
             const min = Math.min.apply(null, prices);
             const max = Math.max.apply(null, prices);
-            const w = 120, h = 32, pad = 3;
+            const w = 132, h = 34, pad = 5;
 
-            const coords = points.map(function(p, i) {
-                const x = pad + (i / (points.length - 1)) * (w - 2 * pad);
-                const y = max === min ? h / 2 : h - pad - ((p.price - min) / (max - min)) * (h - 2 * pad);
-                return x.toFixed(1) + ',' + y.toFixed(1);
+            const xs = [], ys = [];
+            points.forEach(function(p, i) {
+                xs.push(pad + (i / (points.length - 1)) * (w - 2 * pad));
+                ys.push(max === min ? h / 2 : h - pad - ((p.price - min) / (max - min)) * (h - 2 * pad));
             });
 
             const first = points[0];
             const last = points[points.length - 1];
             const trendColor = last.price > first.price ? '#e53935' : (last.price < first.price ? '#2e7d32' : '#999');
 
-            const svg = '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">'
-                + '<polyline points="' + coords.join(' ') + '" fill="none" stroke="' + trendColor
-                + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            const line = xs.map(function(x, i) { return x.toFixed(1) + ',' + ys[i].toFixed(1); }).join(' ');
+            // A dot per price, small enough that a dozen of them still read as a line. They are
+            // what makes the individual prices visible at all - a bare polyline shows the shape
+            // and hides every value that made it.
+            let dots = '';
+            xs.forEach(function(x, i) {
+                dots += '<circle class="price-history-dot" data-i="' + i + '" cx="' + x.toFixed(1)
+                    + '" cy="' + ys[i].toFixed(1) + '" r="2.2" stroke="' + trendColor + '"/>';
+            });
 
-            container.innerHTML = '<div class="price-history-label">Price history (' + points.length + ' checks)</div>'
+            const svg = '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">'
+                + '<polyline points="' + line + '" fill="none" stroke="' + trendColor
+                + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' + dots + '</svg>';
+
+            container.innerHTML = '<div class="price-history-label">Price history ('
+                + points.length + (points.length === 1 ? ' price' : ' prices') + ')</div>'
                 + '<div class="price-history-chart">' + svg
-                + '<span class="price-history-range">' + Math.round(min) + '–' + Math.round(max) + ' ' + last.currency + '</span></div>';
+                + '<span class="price-history-range">' + Math.round(min) + '–' + Math.round(max) + ' ' + last.currency + '</span>'
+                + '<div class="price-history-tip"></div></div>';
+
+            attachPriceHistoryTip(container.querySelector('.price-history-chart'), points, xs, w);
+        }
+
+        // Hover on a mouse, tap on a phone, both landing on the nearest price rather than
+        // demanding you hit a two-pixel dot.
+        function attachPriceHistoryTip(chart, points, xs, w) {
+            const svg = chart.querySelector('svg');
+            const tip = chart.querySelector('.price-history-tip');
+            const dots = chart.querySelectorAll('.price-history-dot');
+            let shown = -1;
+
+            function show(index) {
+                if (index === shown) { return; }
+                shown = index;
+                dots.forEach(function(dot, i) { dot.classList.toggle('is-active', i === index); });
+                const p = points[index];
+                tip.innerHTML = '<b>' + Math.round(p.price) + ' ' + p.currency + '</b> · ' + formatDate(p.collectedAt);
+                // Kept inside the chart's own width, so the first and last prices don't push a
+                // tooltip off the side of the card.
+                const clamped = Math.min(Math.max(xs[index], 26), w - 26);
+                tip.style.left = clamped + 'px';
+                tip.classList.add('is-visible');
+            }
+
+            function hide() {
+                shown = -1;
+                dots.forEach(function(dot) { dot.classList.remove('is-active'); });
+                tip.classList.remove('is-visible');
+            }
+
+            function nearest(event) {
+                const box = svg.getBoundingClientRect();
+                const x = (event.clientX - box.left) * (w / box.width);
+                let best = 0;
+                for (let i = 1; i < xs.length; i++) {
+                    if (Math.abs(xs[i] - x) < Math.abs(xs[best] - x)) { best = i; }
+                }
+                show(best);
+            }
+
+            svg.addEventListener('pointermove', nearest);
+            svg.addEventListener('pointerdown', nearest);
+            svg.addEventListener('pointerleave', hide);
+            // A tap elsewhere puts it away on touch, where there is no pointerleave to rely on.
+            document.addEventListener('pointerdown', function(event) {
+                if (!chart.contains(event.target)) { hide(); }
+            });
         }
     </script>
 </body>

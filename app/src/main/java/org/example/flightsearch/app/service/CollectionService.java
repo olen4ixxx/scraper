@@ -51,13 +51,24 @@ public class CollectionService {
     // one run would still read as "fresh" 5h later and get skipped for a full extra cycle.
     private static final int DEFAULT_FRESHNESS_WINDOW_HOURS = 4;
     /**
-     * How much of a flight's price history is worth keeping. Recording only changes stopped the
-     * database growing by three quarters of a million rows a day; it did not stop it growing,
-     * because prices really do move - Ryanair's alone about 135,000 times a day. Twenty points is
-     * two or three weeks of movement on a typical flight, enough for a graph to be worth looking
-     * at, and it puts a ceiling on a table that otherwise has none.
+     * How much of a flight's price history is worth keeping.
+     *
+     * <p>This is the one number that decides the size of the database. Of 2.2 million price rows,
+     * only 247,000 - one per flight - are the current price a search reads; the remaining 89%
+     * exist to draw the history. Everything else in the database put together is about 40MB.
+     *
+     * <p>It was twenty, and twenty did not fit. A flight sits in the sixty-day window long enough
+     * to reach any small cap - Ryanair moves a price about once a day, WizzAir every third day -
+     * so nearly every flight ends up holding the full allowance, and 275,000 flights at twenty
+     * points comes to some 800MB against an allowance of 540MB. At five it comes to around
+     * 250MB, which leaves room for the network to grow again as it did when a rediscovery
+     * tripled Volotea and Vueling overnight.
+     *
+     * <p>Five points is roughly four days of movement on a Ryanair fare and a fortnight on a
+     * WizzAir one. What it gives up is the far end of a long-lived flight's history; the part
+     * near departure, which is the part anyone decides on, is kept in full.
      */
-    private static final int PRICE_POINTS_KEPT_PER_FLIGHT = 20;
+    private static final int PRICE_POINTS_KEPT_PER_FLIGHT = 5;
     /**
      * How long a results address stays reachable after the last time anyone opened it. Long
      * enough that a link sent to someone still works when they get round to it; short enough

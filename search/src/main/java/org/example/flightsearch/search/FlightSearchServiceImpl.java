@@ -83,11 +83,20 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         this.eurConverter = eurConverter;
     }
 
+    /**
+     * A flight's recorded prices, in euros like everything else a search shows.
+     *
+     * <p>WizzAir quotes in the departure market's currency and the rows are stored that way, so
+     * without this the graph on a card would be drawn in zloty under a headline price in euros -
+     * the same flight described twice in two units, with neither saying which. A point that
+     * cannot be converted is left out rather than shown as a bare number.
+     */
     @Override
     public List<PriceHistoryPoint> getPriceHistory(Long flightId) {
         List<PriceHistoryPoint> history = new ArrayList<>();
         for (PriceSnapshotEntity snapshot : priceSnapshotRepository.findByFlightIdOrderByCollectedAt(flightId)) {
-            history.add(new PriceHistoryPoint(snapshot.collectedAt(), snapshot.price(), snapshot.currency()));
+            eurConverter.toEur(snapshot.price(), snapshot.currency())
+                .ifPresent(euros -> history.add(new PriceHistoryPoint(snapshot.collectedAt(), euros, "EUR")));
         }
         return history;
     }
