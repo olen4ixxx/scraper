@@ -42,6 +42,15 @@ dependencies {
     
     // Logging
     implementation("ch.qos.logback:logback-classic:1.5.12")
+
+    // The search runs on PostgreSQL and only on PostgreSQL: LATERAL joins, NULLS FIRST, ON
+    // CONFLICT. Testing it against anything else would be testing a different query, so the
+    // integration tests bring a real one up rather than substituting a database that agrees
+    // with them.
+    testImplementation("org.springframework.boot:spring-boot-starter-test:3.5.0")
+    testImplementation("org.testcontainers:postgresql:1.21.4")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.4")
+    testRuntimeOnly("org.postgresql:postgresql:42.7.4")
 }
 
 tasks.withType<JavaCompile> {
