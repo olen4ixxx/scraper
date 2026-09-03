@@ -102,11 +102,12 @@ class SearchIntegrationTest {
         }
         seeded = true;
 
-        airport("WAW", "Warsaw", "Poland");
-        airport("BCN", "Barcelona", "Spain");
-        airport("BUD", "Budapest", "Hungary");
-        airport("LTN", "London Luton", "United Kingdom");
-        airport("AGP", "Malaga", "Spain");
+        airport("WAW", "Warsaw", "Poland", "Europe/Warsaw");
+        airport("BCN", "Barcelona", "Spain", "Europe/Madrid");
+        airport("BUD", "Budapest", "Hungary", "Europe/Budapest");
+        // An hour behind Poland, which is what makes the duration test below mean anything.
+        airport("LTN", "London Luton", "United Kingdom", "Europe/London");
+        airport("AGP", "Malaga", "Spain", "Europe/Madrid");
 
         // A plain euro fare, the ordinary case.
         long direct = route("RYANAIR", "WAW", "BCN", true);
@@ -142,11 +143,11 @@ class SearchIntegrationTest {
         flight(lutonOnward, "FR3002", 12, 15, 60.0, "EUR");
     }
 
-    private void airport(String iata, String city, String country) {
+    private void airport(String iata, String city, String country, String timezone) {
         jdbc.update("""
-            INSERT INTO airport (iata, name, city, country, lat, lon)
-            VALUES (?, ?, ?, ?, 0, 0) ON CONFLICT (iata) DO NOTHING
-            """, iata, city, city, country);
+            INSERT INTO airport (iata, name, city, country, lat, lon, timezone)
+            VALUES (?, ?, ?, ?, 0, 0, ?) ON CONFLICT (iata) DO NOTHING
+            """, iata, city, city, country, timezone);
     }
 
     private long route(String airline, String from, String to, boolean active) {
@@ -187,12 +188,18 @@ class SearchIntegrationTest {
         seedOnce();
         // If a migration ever stops applying, everything below fails in a confusing way; this
         // fails in an obvious one.
-        assertEquals(5, jdbc.queryForObject(
-            "SELECT MAX(version::int) FROM flyway_schema_history WHERE success", Integer.class));
-        assertTrue(jdbc.queryForObject("""
+        assertEquals(6, jdbc.queryForObject(
+            "SELECT MAX(version::int) FROM flyway_schema_history WHERE success", Integer.class),
+            "bump this deliberately when a migration is added - it is here to catch one that has "
+                + "silently stopped applying");
+        assertEquals(2, jdbc.queryForObject("""
             SELECT COUNT(*) FROM information_schema.columns
             WHERE table_name = 'route' AND column_name IN ('active', 'last_attempted_at')
-            """, Integer.class) == 2, "the columns collection orders and filters by");
+            """, Integer.class), "the columns collection orders and filters by");
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_name = 'airport' AND column_name = 'timezone'
+            """, Integer.class), "without it a duration is two clocks subtracted from each other");
     }
 
     @Test
@@ -253,6 +260,30 @@ class SearchIntegrationTest {
     }
 
     @Test
+    @DisplayName("a flight across a time zone lasts as long as it really lasts")
+    void durationsCrossTimeZones() {
+        seedOnce();
+        // Warsaw to Luton: airlines quote both ends in local time and the rows keep them that
+        // way, so subtracting one clock from the other made this an hour shorter than the flight
+        // is. Poland is an hour ahead of Britain, so 08:00 to 09:30 on the two clocks is two and
+        // a half hours in the air.
+        long crossing = route("WIZZAIR", "WAW", "LTN", true);
+        flight(crossing, "W6ZONE", 8, 9, 89.0, "EUR");
+        jdbc.update("UPDATE flight SET arrival = arrival + interval '30 minutes' WHERE flight_number = 'W6ZONE'");
+
+        SearchResult found = search.search(new SearchRequest("WAW", "LTN", DEPARTURE, DEPARTURE, null, null,
+                0, Set.of(), SearchRequest.SortBy.CHEAPEST, null, null, null, null,
+                true, false, false, false, null, false)).stream()
+            .filter(r -> r.totalPrice() == 89.0)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("the seeded crossing flight should be found"));
+
+        assertEquals(150, found.duration().toMinutes(),
+            "two clocks an hour apart subtracted from each other gives 90; the flight takes 150");
+        assertTrue(found.duration().toMinutes() > 0, "and nothing should ever last a negative time");
+    }
+
+    @Test
     @DisplayName("a wide search over a full network answers quickly enough to be a web page")
     void staysFastOverALargeNetwork() {
         seedOnce();
@@ -287,10 +318,10 @@ class SearchIntegrationTest {
         if (jdbc.queryForObject("SELECT COUNT(*) FROM flight", Integer.class) > 1000) {
             return;
         }
-        airport("KRK", "Krakow", "Poland");
-        airport("KTW", "Katowice", "Poland");
-        airport("VLC", "Valencia", "Spain");
-        airport("ALC", "Alicante", "Spain");
+        airport("KRK", "Krakow", "Poland", "Europe/Warsaw");
+        airport("KTW", "Katowice", "Poland", "Europe/Warsaw");
+        airport("VLC", "Valencia", "Spain", "Europe/Madrid");
+        airport("ALC", "Alicante", "Spain", "Europe/Madrid");
 
         long[] bulkRoutes = {
             route("RYANAIR", "KRK", "VLC", true),

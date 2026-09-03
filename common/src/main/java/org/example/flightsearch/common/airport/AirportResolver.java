@@ -60,7 +60,7 @@ public class AirportResolver {
                         continue;
                     }
                     String[] parts = line.split(",", -1);
-                    if (parts.length != 6) {
+                    if (parts.length != 7) {
                         throw new IllegalStateException("Malformed row in " + RESOURCE_PATH + ": " + line);
                     }
                     String iata = parts[0].trim().toUpperCase();
@@ -71,7 +71,8 @@ public class AirportResolver {
                         parts[2].trim(),
                         parts[3].trim(),
                         Double.valueOf(parts[4].trim()),
-                        Double.valueOf(parts[5].trim())
+                        Double.valueOf(parts[5].trim()),
+                        parts[6].trim()
                     );
                     result.put(iata, airport);
                 }

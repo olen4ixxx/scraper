@@ -86,7 +86,8 @@ public class RoutePersistenceService {
                 airport.city(),
                 airport.country(),
                 airport.lat(),
-                airport.lon()
+                airport.lon(),
+                airport.timezone()
             );
             airportRepository.save(entity);
             logger.debug("Saved airport: {}", airport.iata());

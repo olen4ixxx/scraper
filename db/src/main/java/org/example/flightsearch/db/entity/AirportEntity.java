@@ -11,5 +11,7 @@ public record AirportEntity(
     String city,
     String country,
     Double lat,
-    Double lon
+    Double lon,
+    // IANA zone name; null for a row written before the column existed.
+    String timezone
 ) {}

@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -711,7 +712,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
         LocalDateTime departure = LocalDateTime.ofInstant(flight.departure(), ZoneOffset.UTC);
         LocalDateTime arrival = LocalDateTime.ofInstant(flight.arrival(), ZoneOffset.UTC);
-        Duration duration = Duration.between(flight.departure(), flight.arrival());
+        Duration duration = realDuration(flight.departure(), from, flight.arrival(), to, ctx);
 
         SearchResult.Segment segment = new SearchResult.Segment(
             flight.id(),
@@ -757,7 +758,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
         LocalDateTime departure = LocalDateTime.ofInstant(firstFlight.departure(), ZoneOffset.UTC);
         LocalDateTime arrival = LocalDateTime.ofInstant(secondFlight.arrival(), ZoneOffset.UTC);
-        Duration duration = Duration.between(firstFlight.departure(), secondFlight.arrival());
+        Duration duration = realDuration(firstFlight.departure(), firstFrom, secondFlight.arrival(), secondTo, ctx);
 
         double totalPrice = firstFlight.price() + secondFlight.price();
         String currency = firstFlight.currency();
@@ -773,7 +774,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             LocalDateTime.ofInstant(firstFlight.arrival(), ZoneOffset.UTC),
             firstFlight.price(),
             firstFlight.currency(),
-            Duration.between(firstFlight.departure(), firstFlight.arrival())
+            realDuration(firstFlight.departure(), firstFrom, firstFlight.arrival(), firstTo, ctx)
         );
 
         SearchResult.Segment segment2 = new SearchResult.Segment(
@@ -787,7 +788,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             LocalDateTime.ofInstant(secondFlight.arrival(), ZoneOffset.UTC),
             secondFlight.price(),
             secondFlight.currency(),
-            Duration.between(secondFlight.departure(), secondFlight.arrival())
+            realDuration(secondFlight.departure(), secondFrom, secondFlight.arrival(), secondTo, ctx)
         );
 
         return new SearchResult(
@@ -840,6 +841,45 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             logger.warn("Left {} out of the results - no exchange rate to show them in euros", unconvertible);
         }
         return converted;
+    }
+
+    /**
+     * How long a flight really takes, rather than what subtracting one clock from another says.
+     *
+     * <p>Airlines quote local times at both ends and the rows keep them that way, which is right
+     * for showing someone when to be at the airport and wrong for every sum. Krakow to Luton read
+     * as an hour and a half instead of two and a half, because Poland is an hour ahead of Britain;
+     * Malaga to Marrakesh arrived before it left and showed minus twenty-four hours, because
+     * Morocco is an hour behind Spain. Sorting by "shortest" ranked flights by that error.
+     *
+     * <p>Falls back to the plain subtraction where an airport has no zone recorded - a wrong
+     * duration is better than no result, and it is what every duration was until now.
+     */
+    private Duration realDuration(Instant departureLocal, String fromIata,
+                                  Instant arrivalLocal, String toIata, SearchContext ctx) {
+        ZoneId from = zoneOf(fromIata, ctx);
+        ZoneId to = zoneOf(toIata, ctx);
+        if (from == null || to == null) {
+            return Duration.between(departureLocal, arrivalLocal);
+        }
+        return Duration.between(atZone(departureLocal, from), atZone(arrivalLocal, to));
+    }
+
+    /** The stored value is a local wall clock that has been kept in an Instant; this reads it back. */
+    private static Instant atZone(Instant storedAsUtc, ZoneId zone) {
+        return LocalDateTime.ofInstant(storedAsUtc, ZoneOffset.UTC).atZone(zone).toInstant();
+    }
+
+    private ZoneId zoneOf(String iata, SearchContext ctx) {
+        AirportEntity airport = ctx.airportsByIata().get(iata);
+        if (airport == null || airport.timezone() == null || airport.timezone().isBlank()) {
+            return null;
+        }
+        try {
+            return ZoneId.of(airport.timezone());
+        } catch (Exception notAZone) {
+            return null;
+        }
     }
 
     private void sortResults(List<SearchResult> results, SearchRequest.SortBy sortBy) {
