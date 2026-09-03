@@ -29,6 +29,17 @@ jobs:
       - name: Run the tests
         run: ./gradlew test --console=plain
 
+      # The browser is the only thing that ever parses this, and it does so in front of a
+      # visitor. A stray brace in the date-range widget once took the whole search form down
+      # with a syntax error, and nothing caught it but opening the page. Node is already on the
+      # runner, so parsing it here costs a second.
+      - name: Check the page scripts parse
+        run: |
+          for script in app/src/main/resources/static/js/*.js; do
+            echo "checking $script"
+            node --check "$script"
+          done
+
       # The reports say which case failed and why, which the console output alone does not once
       # a run has scrolled past.
       - name: Upload the reports
