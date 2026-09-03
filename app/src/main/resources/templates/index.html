@@ -266,14 +266,47 @@
             cursor: default;
         }
 
+        /* A range is drawn as one continuous shape rather than as separate coloured days: the
+           two ends carry the rounding and everything between them is square, so the selection
+           reads as a band with a beginning and an end. */
         .calendar-day.in-range {
             background: #eef0fd;
             border-radius: 0;
         }
 
-        .calendar-day.selected {
+        .calendar-day.range-start,
+        .calendar-day.range-end,
+        .calendar-day.range-single,
+        .calendar-day.is-open {
             background: #667eea;
             color: white;
+        }
+
+        .calendar-day.range-start { border-radius: 6px 0 0 6px; }
+        .calendar-day.range-end { border-radius: 0 6px 6px 0; }
+        .calendar-day.range-single { border-radius: 6px; }
+
+        /* The first pick, while there is no second one yet. Square on the right with a stub
+           running off that edge, so the day looks deliberately unfinished and the shape itself
+           says the selection carries on to the right - which is the thing a first click
+           otherwise gives no sign of at all. */
+        .calendar-day.is-open {
+            border-radius: 6px 0 0 6px;
+            box-shadow: 4px 0 0 -1px #b9c0f2;
+        }
+
+        /* What the range would be if the day under the cursor were clicked. Costs nothing to
+           show and answers the question outright on a desktop; phones have the hint line
+           instead, which is why that one is written as an instruction. */
+        .calendar-day.preview-range {
+            background: #eef0fd;
+            border-radius: 0;
+        }
+
+        .calendar-day.preview-end {
+            background: #c3c9f5;
+            color: #2b2f6b;
+            border-radius: 0 6px 6px 0;
         }
 
         .calendar-day.blank {
@@ -285,6 +318,14 @@
             color: #999;
             margin-top: 8px;
             text-align: center;
+        }
+
+        /* Once a start exists the hint stops being a footnote and becomes the instruction for
+           what to do next, so it is no longer grey. */
+        .calendar-hint.is-active {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 12px;
         }
 
         /* Phones: the form is a single column, and controls get big enough to tap. */
@@ -1231,6 +1272,11 @@
                 return floor && floor > todayDate ? floor : todayDate;
             }
 
+            /**
+             * Builds the month grid. The colouring of the range is deliberately not done here:
+             * see paint(), which works on the buttons this leaves behind. Rebuilding the grid
+             * under a moving cursor would destroy the very button being hovered.
+             */
             function render() {
                 if (!viewMonth) {
                     viewMonth = new Date((start || minDate()).getFullYear(), (start || minDate()).getMonth(), 1);
@@ -1254,18 +1300,64 @@
                 }
                 for (let day = 1; day <= daysInMonth; day++) {
                     const date = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
-                    const iso = toIso(date);
                     const disabled = date < floor;
-                    const isEdge = sameDay(date, start) || sameDay(date, end);
-                    const inRange = start && end && date > start && date < end;
-                    html += '<button type="button" class="calendar-day'
-                        + (isEdge ? ' selected' : '') + (inRange ? ' in-range' : '') + '"'
-                        + (disabled ? ' disabled' : '') + ' data-date="' + iso + '">' + day + '</button>';
+                    html += '<button type="button" class="calendar-day"'
+                        + (disabled ? ' disabled' : '') + ' data-date="' + toIso(date) + '">' + day + '</button>';
                 }
-                html += '</div><div class="calendar-hint">'
-                    + (awaitingEnd ? 'Pick the last day, or the same day again' : 'Pick a day, then another for a range')
-                    + '</div>';
+                html += '</div><div class="calendar-hint"></div>';
                 calendar.innerHTML = html;
+                paint(null);
+            }
+
+            /**
+             * Colours the days and writes the hint, for a range that may only be half chosen.
+             *
+             * <p>Three states, and the shapes are the point of them. Nothing chosen: plain days.
+             * A start and no end: that day is drawn square on its right with a stub running off
+             * it, so it reads as an opening rather than a finished selection - a first click
+             * used to look exactly like a completed single date, which is what made the second
+             * click undiscoverable. Both ends: one continuous band.
+             *
+             * <p>previewEnd is the day under the cursor while the range is half open, drawn in
+             * a lighter shade so the answer to "what would clicking here give me" is on screen
+             * before it is clicked.
+             */
+            function paint(previewEnd) {
+                const tentativeEnd = end || (previewEnd && previewEnd >= start ? previewEnd : null);
+                const previewing = !end && !!tentativeEnd;
+
+                calendar.querySelectorAll('[data-date]').forEach(function(button) {
+                    const date = fromIso(button.dataset.date);
+                    button.className = 'calendar-day';
+
+                    if (!start) {
+                        return;
+                    }
+                    if (sameDay(date, start)) {
+                        if (!tentativeEnd) {
+                            // A start with nothing after it yet. Open if a second click is
+                            // expected, a finished single date if it is not.
+                            button.classList.add(awaitingEnd ? 'is-open' : 'range-single');
+                        } else if (sameDay(start, tentativeEnd)) {
+                            button.classList.add('range-single');
+                        } else {
+                            button.classList.add('range-start');
+                        }
+                    } else if (tentativeEnd && sameDay(date, tentativeEnd)) {
+                        button.classList.add(previewing ? 'preview-end' : 'range-end');
+                    } else if (tentativeEnd && date > start && date < tentativeEnd) {
+                        button.classList.add(previewing ? 'preview-range' : 'in-range');
+                    }
+                });
+
+                const hint = calendar.querySelector('.calendar-hint');
+                if (awaitingEnd && start) {
+                    hint.textContent = 'From ' + formatShort(start) + ' — now pick the last day, or the same day again for one date';
+                    hint.classList.add('is-active');
+                } else {
+                    hint.textContent = 'Pick a day, then another one for a range';
+                    hint.classList.remove('is-active');
+                }
             }
 
             function syncOut() {
@@ -1303,6 +1395,25 @@
                 calendar.classList.contains('open') ? close() : open();
             });
 
+
+            // Shows the range the cursor is currently offering. Only while a start exists
+            // without an end - at any other time there is nothing to preview, and repainting
+            // on every mouse move would be work for nothing.
+            calendar.addEventListener('mouseover', function(e) {
+                if (!awaitingEnd || !start) {
+                    return;
+                }
+                const day = e.target.closest('[data-date]');
+                if (day && !day.disabled) {
+                    paint(fromIso(day.dataset.date));
+                }
+            });
+
+            calendar.addEventListener('mouseleave', function() {
+                if (awaitingEnd) {
+                    paint(null);
+                }
+            });
             calendar.addEventListener('click', function(e) {
                 // Picking a day re-renders the grid, which detaches the very button that was
                 // clicked - so by the time the click reaches the document-level "clicked
@@ -1321,24 +1432,28 @@
                     return;
                 }
                 const picked = fromIso(dayButton.dataset.date);
+                // Repainted rather than rebuilt: the grid is for the month already on screen,
+                // and replacing it would destroy the button the cursor is sitting on - which
+                // means no preview of the range until the mouse moves again, exactly when the
+                // preview is most wanted.
                 if (!awaitingEnd) {
                     start = picked;
                     end = null;
                     awaitingEnd = true;
-                    render();
+                    paint(null);
                     syncOut();
                     return;
                 }
                 // A second pick before the first restarts the range rather than inverting it.
                 if (picked < start) {
                     start = picked;
-                    render();
+                    paint(null);
                     syncOut();
                     return;
                 }
                 end = picked;
                 awaitingEnd = false;
-                render();
+                paint(null);
                 syncOut();
                 close();
             });
