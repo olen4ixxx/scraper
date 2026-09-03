@@ -254,7 +254,8 @@ public class WizzCollector implements AirlineCollector {
         return false;
     }
 
-    private List<FlightDto> parseFares(JsonNode response, LocalDate today, LocalDate horizon) {
+    // Package-private so a test can hold it: this is where 13,167 fares of nothing once got in.
+    List<FlightDto> parseFares(JsonNode response, LocalDate today, LocalDate horizon) {
         List<FlightDto> flights = new ArrayList<>();
         if (response == null) {
             return flights;

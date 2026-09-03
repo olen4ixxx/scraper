@@ -1,0 +1,40 @@
+name: Tests
+
+# On every push and every pull request, because the point of these tests is to catch the kind of
+# breakage that is otherwise invisible. Both long silences this project has had - WizzAir behind a
+# moved API version for nine days, Transavia behind a changed response shape - were failures that
+# looked exactly like ordinary empty answers, and neither was noticed by anyone looking at a
+# screen. A suite that only runs when someone remembers to run it would not have caught them
+# either.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run the tests
+        run: ./gradlew test --console=plain
+
+      # The reports say which case failed and why, which the console output alone does not once
+      # a run has scrolled past.
+      - name: Upload the reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/test'
+          retention-days: 7

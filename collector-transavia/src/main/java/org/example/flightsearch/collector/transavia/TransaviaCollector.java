@@ -165,7 +165,9 @@ public class TransaviaCollector implements AirlineCollector {
      * <p>Reading both shapes means the next such change costs one of them rather than everything,
      * and an envelope that appears tomorrow will not quietly empty the network again.
      */
-    private static JsonNode fares(JsonNode response) {
+    // Package-private rather than private so a test can hold it directly: this is the function
+    // that silently emptied a whole pass when the envelope changed, and it is worth pinning.
+    static JsonNode fares(JsonNode response) {
         if (response == null) {
             return null;
         }
