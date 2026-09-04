@@ -19,7 +19,11 @@ public record SearchResult(
     LocalDateTime returnArrival,
     Duration returnDuration,
     int returnNumberOfStops,
-    List<Segment> returnSegments
+    List<Segment> returnSegments,
+    // False when any leg came from an airline that publishes a date and a price but no clock
+    // times. The itinerary is still worth showing - this is a tool for finding candidates to
+    // check - but its duration is unknown and the gap it leaves for a connection is a guess.
+    boolean timesPublished
 ) {
     public boolean isRoundTrip() {
         return returnSegments != null && !returnSegments.isEmpty();
@@ -52,6 +56,7 @@ public record SearchResult(
         LocalDateTime arrival,
         double price,
         String currency,
-        Duration duration
+        Duration duration,
+        boolean timePublished
     ) {}
 }

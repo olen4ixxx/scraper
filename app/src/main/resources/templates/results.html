@@ -488,12 +488,12 @@
                 <div class="summary-lines">
                     <div class="summary-line">
                         <span class="summary-leg-label">There</span>
-                        <span th:text="${#temporals.format(result.departure, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.departure, 'HH:mm')} + ' ' + ${result.segments[0].fromCity} + ' ' + ${result.segments[0].fromAirport} + ' ' + ${#temporals.format(result.arrival, 'HH:mm')} + ' ' + ${result.segments[result.segments.size() - 1].toCity} + ' ' + ${result.segments[result.segments.size() - 1].toAirport} + ' ' + ${result.duration.toHours()} + ':' + ${#numbers.formatInteger(result.duration.toMinutes() % 60, 2)} + ' h / ' + ${result.numberOfStops == 0 ? 'direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Tue 25/08/26 12:25 Poznan POZ 14:10 Brussels CRL 1:45 h / direct</span>
+                        <span th:text="${#temporals.format(result.departure, 'EEE dd/MM/yy')} + ' ' + ${result.timesPublished ? #temporals.format(result.departure, 'HH:mm') : '--:--'} + ' ' + ${result.segments[0].fromCity} + ' ' + ${result.segments[0].fromAirport} + ' ' + ${result.timesPublished ? #temporals.format(result.arrival, 'HH:mm') : '--:--'} + ' ' + ${result.segments[result.segments.size() - 1].toCity} + ' ' + ${result.segments[result.segments.size() - 1].toAirport} + ' ' + ${result.timesPublished ? result.duration.toHours() + ':' + #numbers.formatInteger(result.duration.toMinutes() % 60, 2) + ' h' : 'time n/a'} + ' / ' + ${result.numberOfStops == 0 ? 'direct' : result.numberOfStops + ' stop' + (result.numberOfStops > 1 ? 's' : '')}">Tue 25/08/26 12:25 Poznan POZ 14:10 Brussels CRL 1:45 h / direct</span>
                     </div>
                     <div class="summary-line" th:if="${result.roundTrip}">
                         <span class="summary-leg-label">Back</span>
                         <span class="stay-badge" th:text="${result.stayDays} + (result.stayDays == 1 ? ' day' : ' days')">5 days</span>
-                        <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${#temporals.format(result.returnDeparture, 'HH:mm')} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${#temporals.format(result.returnArrival, 'HH:mm')} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.returnDuration.toHours()} + ':' + ${#numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2)} + ' h / ' + ${result.returnNumberOfStops == 0 ? 'direct' : result.returnNumberOfStops + ' stop' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / direct</span>
+                        <span th:text="${#temporals.format(result.returnDeparture, 'EEE dd/MM/yy')} + ' ' + ${result.timesPublished ? #temporals.format(result.returnDeparture, 'HH:mm') : '--:--'} + ' ' + ${result.returnSegments[0].fromCity} + ' ' + ${result.returnSegments[0].fromAirport} + ' ' + ${result.timesPublished ? #temporals.format(result.returnArrival, 'HH:mm') : '--:--'} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toCity} + ' ' + ${result.returnSegments[result.returnSegments.size() - 1].toAirport} + ' ' + ${result.timesPublished ? result.returnDuration.toHours() + ':' + #numbers.formatInteger(result.returnDuration.toMinutes() % 60, 2) + ' h' : 'time n/a'} + ' / ' + ${result.returnNumberOfStops == 0 ? 'direct' : result.returnNumberOfStops + ' stop' + (result.returnNumberOfStops > 1 ? 's' : '')}">Wed 30/08/26 22:35 Brussels CRL 09:50 Poznan POZ 1:45 h / direct</span>
                     </div>
                 </div>
             </div>
@@ -522,7 +522,7 @@
                     </div>
 
                     <div class="duration">
-                        <div th:text="${result.duration.toHours() + 'h ' + (result.duration.toMinutes() % 60) + 'm'}">1h 50m</div>
+                        <div th:text="${result.timesPublished ? result.duration.toHours() + 'h ' + (result.duration.toMinutes() % 60) + 'm' : 'Time not published'}">1h 50m</div>
                     </div>
 
                     <div>
@@ -541,14 +541,18 @@
                         </div>
                         <div class="segment-route" th:text="${segment.fromCity} + ' (' + ${segment.fromAirport} + ')' + ' → ' + ${segment.toCity} + ' (' + ${segment.toAirport} + ')'">Warsaw (WAW) → Milan (BGY)</div>
                         <div class="segment-times">
-                            <span th:text="${#temporals.format(segment.departure, 'HH:mm')}">06:20</span>
-                            <span th:text="${#temporals.format(segment.arrival, 'HH:mm')}">08:10</span>
+                            <span th:text="${segment.timePublished ? #temporals.format(segment.departure, 'HH:mm') : '--:--'}">06:20</span>
+                            <span th:text="${segment.timePublished ? #temporals.format(segment.arrival, 'HH:mm') : '--:--'}">08:10</span>
                         </div>
                         <div class="price-history" th:attr="data-flight-id=${segment.flightId}"></div>
                     </div>
 
                     <div th:if="${result.numberOfStops > 0}" class="self-transfer">
                         ⚠ Self-transfer (not protected)
+                    </div>
+
+                    <div th:if="${!result.timesPublished}" class="self-transfer">
+                        ⚠ The airline publishes a date and a price but no times — check them before booking
                     </div>
                 </div>
             </div>
@@ -566,7 +570,7 @@
                     </div>
 
                     <div class="duration">
-                        <div th:text="${result.returnDuration.toHours() + 'h ' + (result.returnDuration.toMinutes() % 60) + 'm'}">1h 50m</div>
+                        <div th:text="${result.timesPublished ? result.returnDuration.toHours() + 'h ' + (result.returnDuration.toMinutes() % 60) + 'm' : 'Time not published'}">1h 50m</div>
                     </div>
 
                     <div>
@@ -593,6 +597,10 @@
 
                     <div th:if="${result.returnNumberOfStops > 0}" class="self-transfer">
                         ⚠ Self-transfer (not protected)
+                    </div>
+
+                    <div th:if="${!result.timesPublished}" class="self-transfer">
+                        ⚠ The airline publishes a date and a price but no times — check them before booking
                     </div>
                 </div>
             </div>

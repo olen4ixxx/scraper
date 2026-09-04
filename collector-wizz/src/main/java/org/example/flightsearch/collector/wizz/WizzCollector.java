@@ -297,7 +297,7 @@ public class WizzCollector implements AirlineCollector {
                 }
 
                 // The fare chart gives no flight number and no time of day - see the class comment.
-                flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1), amount, currency));
+                flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1), amount, currency, false));
             } catch (Exception e) {
                 logger.warn("Failed to parse a WizzAir fare entry: {}", e.getMessage());
             }

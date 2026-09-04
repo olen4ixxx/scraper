@@ -137,7 +137,8 @@ public class RoutePersistenceService {
                     flightDto.flightNumber(),
                     departure,
                     arrival,
-                    Instant.now()
+                    Instant.now(),
+                    flightDto.timeKnown()
                 );
 
                 FlightEntity savedFlight = flightRepository.save(flight);

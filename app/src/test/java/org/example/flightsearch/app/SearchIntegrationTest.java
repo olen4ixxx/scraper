@@ -17,6 +17,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -281,6 +282,61 @@ class SearchIntegrationTest {
         assertEquals(150, found.duration().toMinutes(),
             "two clocks an hour apart subtracted from each other gives 90; the flight takes 150");
         assertTrue(found.duration().toMinutes() > 0, "and nothing should ever last a negative time");
+    }
+
+    @Test
+    @DisplayName("a fare with no published times is still offered, but says so")
+    void unpublishedTimesAreMarkedRatherThanHidden() {
+        seedOnce();
+        // WizzAir and Transavia publish a date and a price and no time of day. The rows stand in
+        // for that with the ends of the day - 23:59 to 00:01 - which subtracts to minus
+        // twenty-four hours and reached the page as "-23h -58m". The itinerary is still worth
+        // showing; what it must not do is present an invented clock as a real one.
+        long dateOnly = route("WIZZAIR", "WAW", "BCN", true);
+        jdbc.update("""
+            INSERT INTO flight (route_id, flight_number, departure, arrival, updated_at, time_known)
+            VALUES (?, 'W6DATEONLY', ?, ?, NOW(), FALSE)
+            """, dateOnly,
+            java.sql.Timestamp.from(DEPARTURE.atTime(23, 59).toInstant(java.time.ZoneOffset.UTC)),
+            java.sql.Timestamp.from(DEPARTURE.atTime(0, 1).toInstant(java.time.ZoneOffset.UTC)));
+        jdbc.update("""
+            INSERT INTO price_snapshot (flight_id, price, currency, collected_at)
+            SELECT id, 77.0, 'EUR', NOW() FROM flight WHERE flight_number = 'W6DATEONLY'
+            """);
+
+        SearchResult found = searchFor("WAW", "BCN", 0, false).stream()
+            .filter(r -> r.totalPrice() == 77.0)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("a date-only fare should still be offered"));
+
+        assertFalse(found.timesPublished(), "it has to be marked, or the page cannot warn about it");
+        assertFalse(found.duration().isNegative(), "nothing lasts a negative time");
+        assertEquals(Duration.ZERO, found.duration(),
+            "an unknown duration is unknown - the page shows nothing rather than a number");
+    }
+
+    @Test
+    @DisplayName("shortest-first does not reward flights whose length nobody knows")
+    void unknownDurationsSortLast() {
+        seedOnce();
+        List<SearchResult> byLength = search.search(new SearchRequest("WAW", "BCN", DEPARTURE, DEPARTURE,
+            null, null, 0, Set.of(), SearchRequest.SortBy.SHORTEST, null, null, null, null,
+            true, false, false, false, null, false));
+
+        int firstUnknown = -1;
+        int lastKnown = -1;
+        for (int i = 0; i < byLength.size(); i++) {
+            if (byLength.get(i).timesPublished()) {
+                lastKnown = i;
+            } else if (firstUnknown < 0) {
+                firstUnknown = i;
+            }
+        }
+        if (firstUnknown >= 0 && lastKnown >= 0) {
+            assertTrue(firstUnknown > lastKnown,
+                "left to sort naturally these won every shortest-first search, because a fabricated "
+                    + "duration is shorter than any real one");
+        }
     }
 
     @Test

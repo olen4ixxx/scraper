@@ -263,7 +263,7 @@ public class TransaviaCollector implements AirlineCollector {
                 // See the class comment: a date-only fare, spread across its own day so that
                 // it stays eligible as a connection.
                 flights.add(new FlightDto("N/A", day.atTime(23, 59), day.atTime(0, 1),
-                    price.asDouble(), "EUR"));
+                    price.asDouble(), "EUR", false));
             } catch (Exception e) {
                 logger.warn("Failed to parse Transavia fare entry: {}", e.getMessage());
             }

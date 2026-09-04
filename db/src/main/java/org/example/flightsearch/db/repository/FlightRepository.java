@@ -37,7 +37,7 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
     // compared by amount here - five is a fare in euros and small change in forints. Converting
     // to euros and discarding the junk ones happens in the search, on the way out of this.
     @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
+        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency, f.time_known FROM flight f
         JOIN route r ON f.route_id = r.id
         CROSS JOIN LATERAL (
             SELECT price, currency FROM price_snapshot
@@ -61,7 +61,7 @@ public interface FlightRepository extends CrudRepository<FlightEntity, Long> {
     // is 11 x 29 pairs, which used to mean 319 separate round trips to the database - the
     // dominant cost once the database stopped being local (~40ms each against a hosted one).
     @Query("""
-        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency FROM flight f
+        SELECT f.id, f.route_id, f.flight_number, f.departure, f.arrival, f.updated_at, ps.price, ps.currency, f.time_known FROM flight f
         JOIN route r ON f.route_id = r.id
         CROSS JOIN LATERAL (
             SELECT price, currency FROM price_snapshot

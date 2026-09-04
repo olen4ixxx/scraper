@@ -206,7 +206,7 @@ public class RyanairCollector implements AirlineCollector {
 
                     // The fare-calendar endpoint doesn't expose an operational flight number
                     // (unlike oneWayFares) - "N/A" avoids inventing one that looks real.
-                    flights.add(new FlightDto("N/A", departure, arrival, price, currency));
+                    flights.add(new FlightDto("N/A", departure, arrival, price, currency, true));
                 } catch (Exception e) {
                     logger.warn("Failed to parse calendar fare entry: {}", e.getMessage());
                 }

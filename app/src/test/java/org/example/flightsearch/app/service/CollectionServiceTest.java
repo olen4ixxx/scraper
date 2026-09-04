@@ -69,7 +69,7 @@ class CollectionServiceTest {
     }
 
     private static final List<FlightDto> ONE_FARE = List.of(
-        new FlightDto("N/A", LocalDateTime.now().plusDays(7), LocalDateTime.now().plusDays(7), 49.0, "EUR"));
+        new FlightDto("N/A", LocalDateTime.now().plusDays(7), LocalDateTime.now().plusDays(7), 49.0, "EUR", true));
 
     @BeforeEach
     void setUp() {

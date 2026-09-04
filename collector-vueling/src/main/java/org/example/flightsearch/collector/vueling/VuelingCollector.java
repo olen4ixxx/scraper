@@ -148,7 +148,7 @@ public class VuelingCollector implements AirlineCollector {
 
                 // Flight number and arrival time are simply not in this response - "N/A" and a
                 // repeated departure beat inventing either. See the class comment.
-                flights.add(new FlightDto("N/A", departure, departure, price, "EUR"));
+                flights.add(new FlightDto("N/A", departure, departure, price, "EUR", false));
             } catch (Exception e) {
                 logger.warn("Failed to parse Vueling fare entry: {}", e.getMessage());
             }

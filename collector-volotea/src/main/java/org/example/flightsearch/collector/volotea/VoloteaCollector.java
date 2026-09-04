@@ -198,7 +198,8 @@ public class VoloteaCollector implements AirlineCollector {
                     departure,
                     arrival,
                     cheapest.path("Price").asDouble(),
-                    cheapest.path("Currency").asText("EUR")
+                    cheapest.path("Currency").asText("EUR"),
+                    true
                 ));
             } catch (Exception e) {
                 logger.warn("Failed to parse Volotea schedule entry: {}", e.getMessage());

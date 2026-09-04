@@ -388,7 +388,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             ret.arrival(),
             ret.duration(),
             ret.numberOfStops(),
-            ret.segments()
+            ret.segments(),
+            // A trip is only as published as its least published leg.
+            outbound.timesPublished() && ret.timesPublished()
         );
     }
 
@@ -705,6 +707,27 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             .collect(Collectors.toList());
     }
 
+    /**
+     * Whether an airline published clock times for this flight.
+     *
+     * <p>Null for a row written before the column existed, which is read as published - those are
+     * the airlines that always had real times, and the backfill only marked the three that never
+     * did.
+     */
+    private static boolean timesPublished(FlightWithPrice flight) {
+        return flight.timeKnown() == null || flight.timeKnown();
+    }
+
+    /**
+     * A duration is only a duration when both ends of it are real. Where the times were invented
+     * to stand in for a date-only fare, subtracting them gives the twenty-four hours between one
+     * end of a day and the other - which is how "-23h -58m" reached the results page. Zero says
+     * "not known" and the page shows nothing rather than a number that is worse than nothing.
+     */
+    private static Duration knownDuration(Duration measured, boolean published) {
+        return published ? measured : Duration.ZERO;
+    }
+
     private SearchResult createSearchResult(FlightWithPrice flight, SearchContext ctx) {
         String airline = ctx.airline(flight.routeId());
         String from = ctx.fromAirport(flight.routeId());
@@ -712,7 +735,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
         LocalDateTime departure = LocalDateTime.ofInstant(flight.departure(), ZoneOffset.UTC);
         LocalDateTime arrival = LocalDateTime.ofInstant(flight.arrival(), ZoneOffset.UTC);
-        Duration duration = realDuration(flight.departure(), from, flight.arrival(), to, ctx);
+        boolean published = timesPublished(flight);
+        Duration duration = knownDuration(realDuration(flight.departure(), from, flight.arrival(), to, ctx), published);
 
         SearchResult.Segment segment = new SearchResult.Segment(
             flight.id(),
@@ -725,7 +749,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             arrival,
             flight.price(),
             flight.currency(),
-            duration
+            duration,
+            published
         );
 
         return new SearchResult(
@@ -741,7 +766,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             null,
             null,
             0,
-            List.of()
+            List.of(),
+            published
         );
     }
 
@@ -758,7 +784,11 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
         LocalDateTime departure = LocalDateTime.ofInstant(firstFlight.departure(), ZoneOffset.UTC);
         LocalDateTime arrival = LocalDateTime.ofInstant(secondFlight.arrival(), ZoneOffset.UTC);
-        Duration duration = realDuration(firstFlight.departure(), firstFrom, secondFlight.arrival(), secondTo, ctx);
+        boolean firstPublished = timesPublished(firstFlight);
+        boolean secondPublished = timesPublished(secondFlight);
+        boolean bothPublished = firstPublished && secondPublished;
+        Duration duration = knownDuration(
+            realDuration(firstFlight.departure(), firstFrom, secondFlight.arrival(), secondTo, ctx), bothPublished);
 
         double totalPrice = firstFlight.price() + secondFlight.price();
         String currency = firstFlight.currency();
@@ -774,7 +804,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             LocalDateTime.ofInstant(firstFlight.arrival(), ZoneOffset.UTC),
             firstFlight.price(),
             firstFlight.currency(),
-            realDuration(firstFlight.departure(), firstFrom, firstFlight.arrival(), firstTo, ctx)
+            knownDuration(realDuration(firstFlight.departure(), firstFrom, firstFlight.arrival(), firstTo, ctx), firstPublished),
+            firstPublished
         );
 
         SearchResult.Segment segment2 = new SearchResult.Segment(
@@ -788,7 +819,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             LocalDateTime.ofInstant(secondFlight.arrival(), ZoneOffset.UTC),
             secondFlight.price(),
             secondFlight.currency(),
-            realDuration(secondFlight.departure(), secondFrom, secondFlight.arrival(), secondTo, ctx)
+            knownDuration(realDuration(secondFlight.departure(), secondFrom, secondFlight.arrival(), secondTo, ctx), secondPublished),
+            secondPublished
         );
 
         return new SearchResult(
@@ -804,7 +836,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
             null,
             null,
             0,
-            List.of()
+            List.of(),
+            bothPublished
         );
     }
 
@@ -835,7 +868,7 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                 continue;
             }
             converted.add(new FlightWithPrice(flight.id(), flight.routeId(), flight.flightNumber(),
-                flight.departure(), flight.arrival(), flight.updatedAt(), euros.get(), "EUR"));
+                flight.departure(), flight.arrival(), flight.updatedAt(), euros.get(), "EUR", flight.timeKnown()));
         }
         if (!unconvertible.isEmpty()) {
             logger.warn("Left {} out of the results - no exchange rate to show them in euros", unconvertible);
@@ -885,7 +918,12 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     private void sortResults(List<SearchResult> results, SearchRequest.SortBy sortBy) {
         switch (sortBy) {
             case CHEAPEST -> results.sort(Comparator.comparingDouble(SearchResult::totalPrice));
-            case SHORTEST -> results.sort(Comparator.comparing(SearchResult::duration));
+            // Itineraries whose duration nobody published go last rather than first. Left to
+            // sort naturally they won every "shortest" search twice over: as zero now, and as
+            // minus twenty-four hours before that, so the flights measured worst came top.
+            case SHORTEST -> results.sort(
+                Comparator.comparing((SearchResult r) -> !r.timesPublished())
+                    .thenComparing(SearchResult::duration));
             case EARLIEST_DEPARTURE -> results.sort(Comparator.comparing(SearchResult::departure));
             case LATEST_DEPARTURE -> results.sort(Comparator.comparing(SearchResult::departure).reversed());
             case FEWEST_STOPS -> results.sort(Comparator.comparingInt(SearchResult::numberOfStops)
