@@ -1,31 +1,48 @@
-# Collects what the cloud cannot, for as long as this is up.
+# Two containers against one database.
 #
-#   docker compose up -d        start collecting
-#   docker compose logs -f      watch it
-#   docker compose down         stop
+#   docker compose up -d           start both
+#   docker compose up -d site      just the website, on http://localhost:8080
+#   docker compose logs -f         watch them
+#   docker compose down            stop
+#
+# Both talk to the same Neon that the scheduled GitHub runs write to and that azair.onrender.com
+# reads from. There is no local copy to reconcile: what the collector gathers here is on the site
+# a moment later, whichever site you open.
 #
 # Stopping is always safe. Progress lives in the database, not in the container: routes are
 # visited longest-untried first and each is stamped before it is asked about, so a pass cut off
 # by a reboot, a sleep or a `down` leaves the next one resuming exactly where it stopped. There
 # is nothing to flush and nothing to wait for.
 services:
+  # The job the cloud cannot do. Transavia answers GitHub's runners 403 to every request - a flat
+  # refusal from the first call, while the same requests at the same pace answer normally from a
+  # home connection - so it is left out of the scheduled run and collected from here instead.
   collector:
     build: .
-    # No published port. This is not the website - that runs on Render - it is one job: keep
-    # Transavia collected. Nothing needs to reach it.
+    # No published port: this one is a job, not a site. Nothing needs to reach it.
     environment:
-      # The one database. The same Neon that the scheduled GitHub runs write to and the website
-      # reads from, so what this collects is live immediately and there is never a second copy
-      # to reconcile. Required rather than defaulted: a fallback to some local postgres would
-      # mean a container that looks like it is working while filling a database nobody reads.
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?set it, or this would collect into nowhere}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?set it}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?set it}
-      # Transavia is the one that needs a machine it will talk to. Any airline can be added here
-      # if you want it refreshed sooner than the cloud does it.
+      # Any airline can be added if you want it refreshed sooner than the cloud manages.
       COLLECTOR_LOCAL_AIRLINES: ${COLLECTOR_LOCAL_AIRLINES:-transavia}
       # A full Transavia pass is about ten minutes, so three hours between them keeps its prices
       # about as fresh as the cloud keeps everyone else's without asking them for much.
       COLLECTOR_LOCAL_INTERVAL_MINUTES: ${COLLECTOR_LOCAL_INTERVAL_MINUTES:-180}
       COLLECTOR_ENABLED: "true"
+    restart: unless-stopped
+
+  # The same website that runs on Render, on the same data, without its cold start - and the place
+  # to look at a change before it is deployed.
+  site:
+    build: .
+    ports:
+      - "${SITE_PORT:-8080}:8080"
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?set it}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?set it}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?set it}
+      # Off, exactly as on Render. Collecting is the other container's job, and two of them at it
+      # would ask the airlines for everything twice - and expose /collect on a port besides.
+      COLLECTOR_ENABLED: "false"
     restart: unless-stopped
