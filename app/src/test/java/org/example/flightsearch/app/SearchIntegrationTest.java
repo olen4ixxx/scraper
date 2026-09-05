@@ -185,14 +185,21 @@ class SearchIntegrationTest {
 
     @Test
     @DisplayName("the migrations produce the schema the search expects")
-    void schemaIsWhatFlywayBuilt() {
+    void schemaIsWhatFlywayBuilt() throws Exception {
         seedOnce();
-        // If a migration ever stops applying, everything below fails in a confusing way; this
-        // fails in an obvious one.
-        assertEquals(6, jdbc.queryForObject(
-            "SELECT MAX(version::int) FROM flyway_schema_history WHERE success", Integer.class),
-            "bump this deliberately when a migration is added - it is here to catch one that has "
-                + "silently stopped applying");
+        // Counted from the classpath rather than written down, because a number written down is a
+        // number to remember: this assertion said 6 while a seventh migration sat beside it, and
+        // the build went red on CI for a bump nobody made. What it is actually here to catch is a
+        // migration that has quietly stopped applying, and that it still catches.
+        int onDisk = new org.springframework.core.io.support.PathMatchingResourcePatternResolver()
+            .getResources("classpath*:db/migration/V*.sql").length;
+        assertTrue(onDisk > 0, "the migrations should be on the test classpath at all");
+        assertEquals(onDisk, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM flyway_schema_history WHERE success", Integer.class),
+            "every migration on the classpath should have applied");
+
+        // And the specific columns the code reads, so a migration that applies but does not do
+        // what it says still fails here.
         assertEquals(2, jdbc.queryForObject("""
             SELECT COUNT(*) FROM information_schema.columns
             WHERE table_name = 'route' AND column_name IN ('active', 'last_attempted_at')
@@ -201,6 +208,10 @@ class SearchIntegrationTest {
             SELECT COUNT(*) FROM information_schema.columns
             WHERE table_name = 'airport' AND column_name = 'timezone'
             """, Integer.class), "without it a duration is two clocks subtracted from each other");
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_name = 'flight' AND column_name = 'time_known'
+            """, Integer.class), "without it an invented clock cannot be told from a published one");
     }
 
     @Test
