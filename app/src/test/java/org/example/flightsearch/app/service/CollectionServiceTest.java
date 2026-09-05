@@ -7,10 +7,7 @@ import org.example.flightsearch.common.dto.FlightDto;
 import org.example.flightsearch.common.dto.RouteDto;
 import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.db.entity.RouteEntity;
-import org.example.flightsearch.db.repository.FlightRepository;
-import org.example.flightsearch.db.repository.PriceSnapshotRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
-import org.example.flightsearch.db.repository.SavedSearchRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,9 +41,7 @@ import static org.mockito.Mockito.when;
 class CollectionServiceTest {
 
     private RouteRepository routes;
-    private FlightRepository flights;
-    private PriceSnapshotRepository prices;
-    private SavedSearchRepository savedSearches;
+    private DatabaseHousekeeping housekeeping;
     private RoutePersistenceService persistence;
 
     /** A collector that answers instantly and counts how many routes it was actually asked about. */
@@ -74,9 +69,8 @@ class CollectionServiceTest {
     @BeforeEach
     void setUp() {
         routes = mock(RouteRepository.class);
-        flights = mock(FlightRepository.class);
-        prices = mock(PriceSnapshotRepository.class);
-        savedSearches = mock(SavedSearchRepository.class);
+        // Housekeeping is its own concern with its own tests; a pass only has to call it.
+        housekeeping = mock(DatabaseHousekeeping.class);
         persistence = mock(RoutePersistenceService.class);
     }
 
@@ -97,7 +91,7 @@ class CollectionServiceTest {
 
     private CollectionService serviceWith(AirlineCollector collector, long budgetMinutes) {
         return new CollectionService(List.of(collector), new AirportResolver(), persistence,
-            routes, flights, prices, savedSearches, budgetMinutes, 4);
+            routes, housekeeping, budgetMinutes, 4);
     }
 
     @Test

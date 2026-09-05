@@ -23,10 +23,21 @@ public class CollectorConfig {
         return new EurConverter();
     }
 
+    /**
+     * The version WizzAir currently serves, which is part of the path and is enforced: any other
+     * value answers 404 to every request. They move it every few weeks - 29.12.0 to 29.14.0 to
+     * 29.15.1 within a fortnight - so it is a setting rather than a literal, and a 404 stops the
+     * run with a message saying exactly this instead of being read as "no flights on this route".
+     *
+     * <p>Not discovered automatically, though it is written on their home page. That page answers
+     * 405 to this client and serves itself only to a browser, so reading it would mean pretending
+     * to be one, which is the line this project does not cross for Transavia's Cloudflare
+     * challenge or easyJet's either. Finding the number by hand once a month is the cheaper honesty.
+     */
     @Bean
     public List<AirlineCollector> collectors(WebClient webClient, AirportResolver airportResolver,
                                               EurConverter eurConverter,
-                                              @Value("${collector.wizz.api-version:29.14.0}") String wizzApiVersion) {
+                                              @Value("${collector.wizz.api-version:29.15.1}") String wizzApiVersion) {
         return List.of(
             new WizzCollector(webClient, airportResolver, eurConverter, wizzApiVersion),
             new RyanairCollector(webClient),

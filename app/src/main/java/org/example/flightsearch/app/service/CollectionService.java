@@ -8,10 +8,7 @@ import org.example.flightsearch.common.dto.RouteDto;
 import org.example.flightsearch.common.model.Airline;
 import org.example.flightsearch.common.model.Airport;
 import org.example.flightsearch.db.entity.RouteEntity;
-import org.example.flightsearch.db.repository.FlightRepository;
-import org.example.flightsearch.db.repository.PriceSnapshotRepository;
 import org.example.flightsearch.db.repository.RouteRepository;
-import org.example.flightsearch.db.repository.SavedSearchRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,31 +47,6 @@ public class CollectionService {
     // fire a few minutes late too. Without this margin, routes collected slightly late in
     // one run would still read as "fresh" 5h later and get skipped for a full extra cycle.
     private static final int DEFAULT_FRESHNESS_WINDOW_HOURS = 4;
-    /**
-     * How much of a flight's price history is worth keeping.
-     *
-     * <p>This is the one number that decides the size of the database. Of 2.2 million price rows,
-     * only 247,000 - one per flight - are the current price a search reads; the remaining 89%
-     * exist to draw the history. Everything else in the database put together is about 40MB.
-     *
-     * <p>It was twenty, and twenty did not fit. A flight sits in the sixty-day window long enough
-     * to reach any small cap - Ryanair moves a price about once a day, WizzAir every third day -
-     * so nearly every flight ends up holding the full allowance, and 275,000 flights at twenty
-     * points comes to some 800MB against an allowance of 540MB. At five it comes to around
-     * 250MB, which leaves room for the network to grow again as it did when a rediscovery
-     * tripled Volotea and Vueling overnight.
-     *
-     * <p>Five points is roughly four days of movement on a Ryanair fare and a fortnight on a
-     * WizzAir one. What it gives up is the far end of a long-lived flight's history; the part
-     * near departure, which is the part anyone decides on, is kept in full.
-     */
-    private static final int PRICE_POINTS_KEPT_PER_FLIGHT = 5;
-    /**
-     * How long a results address stays reachable after the last time anyone opened it. Long
-     * enough that a link sent to someone still works when they get round to it; short enough
-     * that the searches nobody ever returns to do not accumulate forever.
-     */
-    private static final Duration SAVED_SEARCH_LIFETIME = Duration.ofDays(90);
     /**
      * How long a single pass is allowed to run before it stops of its own accord and reports
      * what it managed.
@@ -116,9 +88,7 @@ public class CollectionService {
     private final AirportResolver airportResolver;
     private final RoutePersistenceService routePersistenceService;
     private final RouteRepository routeRepository;
-    private final FlightRepository flightRepository;
-    private final PriceSnapshotRepository priceSnapshotRepository;
-    private final SavedSearchRepository savedSearchRepository;
+    private final DatabaseHousekeeping housekeeping;
     private final Duration passBudget;
     private final Duration freshnessWindow;
 
@@ -126,18 +96,14 @@ public class CollectionService {
                              AirportResolver airportResolver,
                              RoutePersistenceService routePersistenceService,
                              RouteRepository routeRepository,
-                             FlightRepository flightRepository,
-                             PriceSnapshotRepository priceSnapshotRepository,
-                             SavedSearchRepository savedSearchRepository,
+                             DatabaseHousekeeping housekeeping,
                              @Value("${collector.pass-budget-minutes:" + DEFAULT_PASS_BUDGET_MINUTES + "}") long passBudgetMinutes,
                              @Value("${collector.freshness-window-hours:" + DEFAULT_FRESHNESS_WINDOW_HOURS + "}") long freshnessWindowHours) {
         this.collectors = collectors;
         this.airportResolver = airportResolver;
         this.routePersistenceService = routePersistenceService;
         this.routeRepository = routeRepository;
-        this.flightRepository = flightRepository;
-        this.priceSnapshotRepository = priceSnapshotRepository;
-        this.savedSearchRepository = savedSearchRepository;
+        this.housekeeping = housekeeping;
         this.passBudget = Duration.ofMinutes(passBudgetMinutes);
         this.freshnessWindow = Duration.ofHours(freshnessWindowHours);
     }
@@ -172,48 +138,12 @@ public class CollectionService {
             );
     }
 
-    /**
-     * Drops what can no longer be used, so the database reaches a plateau instead of growing
-     * forever. Two kinds of dead weight: flights whose departure has passed, which no search can
-     * return because the search window starts at today, and flights left without any price.
-     *
-     * <p>Run before collecting rather than on a timer, because there is no timer to run on - the
-     * scheduled job starts the application, collects, and stops. Deleting first also means the
-     * space freed is space the pass about to run can write into, which is what keeps a plateau a
-     * plateau: Postgres reuses the room a delete leaves behind, so the files stop growing without
-     * anyone having to compact them by hand.
-     */
-    private void removeDeadWeight() {
-        try {
-            Instant departed = Instant.now();
-            int prices = priceSnapshotRepository.deleteForDepartedFlights(departed);
-            int flights = flightRepository.deleteDepartedFlights(departed);
-            int priceless = flightRepository.deletePricelessFlights();
-            if (flights > 0 || priceless > 0) {
-                logger.info("Cleared {} departed flights ({} price rows) and {} left without a price",
-                    flights, prices, priceless);
-            }
-            int trimmed = priceSnapshotRepository.trimHistoryToNewest(PRICE_POINTS_KEPT_PER_FLIGHT);
-            if (trimmed > 0) {
-                logger.info("Trimmed {} price points beyond the newest {} per flight",
-                    trimmed, PRICE_POINTS_KEPT_PER_FLIGHT);
-            }
-            int forgotten = savedSearchRepository.deleteUnusedSince(Instant.now().minus(SAVED_SEARCH_LIFETIME));
-            if (forgotten > 0) {
-                logger.info("Forgot {} saved searches nobody had opened in {} days",
-                    forgotten, SAVED_SEARCH_LIFETIME.toDays());
-            }
-        } catch (Exception e) {
-            // Housekeeping must never be the reason a collection run fails.
-            logger.warn("Could not clear out departed flights: {}", e.getMessage());
-        }
-    }
 
     private void collectAirline(AirlineCollector collector, boolean rediscoverRoutes) {
         long startTime = System.currentTimeMillis();
         logger.info("Starting {} collection", collector.airline());
 
-        removeDeadWeight();
+        housekeeping.removeDeadWeight();
 
         try {
             List<RouteDto> routes = resolveRoutes(collector, rediscoverRoutes);
