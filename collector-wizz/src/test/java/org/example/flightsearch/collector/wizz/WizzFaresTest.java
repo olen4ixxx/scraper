@@ -2,6 +2,7 @@ package org.example.flightsearch.collector.wizz;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.flightsearch.collector.ApiVersionStore;
 import org.example.flightsearch.common.airport.AirportResolver;
 import org.example.flightsearch.common.currency.EurConverter;
 import org.example.flightsearch.common.dto.FlightDto;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,8 +31,14 @@ class WizzFaresTest {
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final LocalDate HORIZON = TODAY.plusDays(60);
 
+    /** Nothing here makes a request, so nothing here needs a version remembered. */
+    private static final ApiVersionStore NO_STORE = new ApiVersionStore() {
+        @Override public Optional<String> current(String airline) { return Optional.empty(); }
+        @Override public void remember(String airline, String version) { }
+    };
+
     private final WizzCollector collector =
-        new WizzCollector(null, new AirportResolver(), new EurConverter(), "29.14.0");
+        new WizzCollector(null, new AirportResolver(), new EurConverter(), "29.14.0", NO_STORE);
 
     private static JsonNode chart(String outboundFlights) throws Exception {
         return MAPPER.readTree("{\"outboundFlights\":[" + outboundFlights + "]}");
