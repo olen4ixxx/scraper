@@ -40,6 +40,28 @@ jobs:
             node --check "$script"
           done
 
+      # A failed run has to say what failed, somewhere anyone can read it. The console output
+      # scrolls past, the artifact below needs a login to download, and the annotation - the one
+      # part of a run that is public on a public repository - said only "Process completed with
+      # exit code 1", which is the least informative true statement available. The reports are
+      # already sitting on the runner as XML; this turns them back into the sentence the
+      # assertion was written with.
+      - name: Say which tests failed
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for path in sorted(glob.glob('**/build/test-results/test/*.xml', recursive=True)):
+              for case in ET.parse(path).getroot().iter('testcase'):
+                  for bad in list(case.findall('failure')) + list(case.findall('error')):
+                      where = case.get('classname', '') + ' > ' + case.get('name', '')
+                      detail = (bad.get('message') or bad.text or '').strip().splitlines()
+                      # The annotation takes one line, so it gets the assertion's own message;
+                      # the rest goes to the log for whoever can read it.
+                      print('::error title=%s::%s' % (where, detail[0] if detail else 'failed'))
+                      print('\n'.join(detail[:25]))
+          PY
+
       # The reports say which case failed and why, which the console output alone does not once
       # a run has scrolled past.
       - name: Upload the reports
