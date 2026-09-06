@@ -1,7 +1,9 @@
 package org.example.flightsearch.app;
 
+import org.example.flightsearch.app.service.SearchFormOptions;
 import org.example.flightsearch.common.dto.SearchRequest;
 import org.example.flightsearch.common.dto.SearchResult;
+import org.example.flightsearch.db.entity.AirportEntity;
 import org.example.flightsearch.search.FlightSearchService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -86,6 +88,9 @@ class SearchIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private SearchFormOptions formOptions;
 
     private static boolean seeded;
 
@@ -247,6 +252,42 @@ class SearchIntegrationTest {
             "its fares are still in the table; that is not a reason to sell them");
         assertTrue(results.stream().allMatch(r -> "WIZZAIR".equals(r.airlines().get(0))),
             "only the route still flown should answer");
+    }
+
+    @Test
+    @DisplayName("a search that never touches Poland finds the flights we already hold")
+    void searchesBetweenTwoOtherCountries() {
+        // Budapest to Barcelona is one of the legs the connection tests below use, so it has been
+        // in the database all along - and until the form let you name an origin outside Poland
+        // there was no way to ask for it.
+        List<SearchResult> results = searchFor("BUD", "BCN", 0, false);
+
+        assertFalse(results.isEmpty(), "the leg is right there in the table");
+        assertEquals("BUD", results.get(0).segments().get(0).fromAirport());
+    }
+
+    @Test
+    @DisplayName("a country as an origin covers its airports, not just the ones Poland reaches")
+    void aCountryOnEitherSideMeansItsAirports() {
+        // The list behind COUNTRY: used to be "destinations reachable from Poland", which is a
+        // set Warsaw itself is not in - it is only ever flown from here. Asking to leave from
+        // anywhere in Poland found nothing at all.
+        List<SearchResult> results = searchFor("COUNTRY:Poland", "BCN", 0, false);
+
+        assertFalse(results.isEmpty(), "Warsaw is in Poland and flies to Barcelona");
+        assertTrue(results.stream().allMatch(r -> "WAW".equals(r.segments().get(0).fromAirport())));
+    }
+
+    @Test
+    @DisplayName("the form offers every airport with a flight, in both directions")
+    void theFormOffersOriginsAsWellAsDestinations() {
+        seedOnce();
+        List<String> offered = formOptions.airports().stream().map(AirportEntity::iata).toList();
+
+        assertTrue(offered.contains("WAW"),
+            "Warsaw only ever appears as a from_airport, and was missing from a list built out "
+                + "of destinations - so the one place everything departs from could not be picked");
+        assertTrue(offered.contains("BCN"), "and the destinations are still there");
     }
 
     @Test
