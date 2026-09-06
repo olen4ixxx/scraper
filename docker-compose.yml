@@ -1,9 +1,16 @@
 # Two containers against one database.
 #
-#   docker compose up -d           start both
+#   docker compose up -d --build   start both, on the code as it is now
+#   docker compose watch           start both and rebuild whenever the code changes
 #   docker compose up -d site      just the website, on http://localhost:8080
 #   docker compose logs -f         watch them
 #   docker compose down            stop
+#
+# The --build is not optional pedantry: without it Compose starts whatever image it built last
+# time, however old, and a site quietly serving last week's page is worse than no site at all -
+# it looks like the change did not work. `docker compose watch` is the version that cannot go
+# stale: it rebuilds and restarts on its own whenever a source file under a watched path
+# changes, and the paths are listed on each service below.
 #
 # Both talk to the same Neon that the scheduled GitHub runs write to and that azair.onrender.com
 # reads from. There is no local copy to reconcile: what the collector gathers here is on the site
@@ -13,6 +20,30 @@
 # visited longest-untried first and each is stamped before it is asked about, so a pass cut off
 # by a reboot, a sleep or a `down` leaves the next one resuming exactly where it stopped. There
 # is nothing to flush and nothing to wait for.
+
+# What `docker compose watch` watches, shared by both services because both are the same image.
+#
+# Each entry is a module's sources rather than the module itself: a module directory contains
+# build/ as well, which Gradle rewrites every time the tests are run on this machine, and
+# watching that would mean rebuilding the containers on the strength of a local test run. The
+# Android and mobile trees are absent for the same reason they are in .dockerignore - the server
+# image does not contain them, so a change there is not a reason to rebuild it.
+x-watch-sources: &watch-sources
+  - { path: ./app/src, action: rebuild }
+  - { path: ./api/src, action: rebuild }
+  - { path: ./common/src, action: rebuild }
+  - { path: ./db/src, action: rebuild }
+  - { path: ./search/src, action: rebuild }
+  - { path: ./collector/src, action: rebuild }
+  - { path: ./collector-ryanair/src, action: rebuild }
+  - { path: ./collector-transavia/src, action: rebuild }
+  - { path: ./collector-volotea/src, action: rebuild }
+  - { path: ./collector-vueling/src, action: rebuild }
+  - { path: ./collector-wizz/src, action: rebuild }
+  - { path: ./build.gradle.kts, action: rebuild }
+  - { path: ./settings.gradle.kts, action: rebuild }
+  - { path: ./Dockerfile, action: rebuild }
+
 services:
   # The job the cloud cannot do. Transavia answers GitHub's runners 403 to every request - a flat
   # refusal from the first call, while the same requests at the same pace answer normally from a
@@ -31,6 +62,8 @@ services:
       COLLECTOR_LOCAL_INTERVAL_MINUTES: ${COLLECTOR_LOCAL_INTERVAL_MINUTES:-180}
       COLLECTOR_ENABLED: "true"
     restart: unless-stopped
+    develop:
+      watch: *watch-sources
 
   # The same website that runs on Render, on the same data, without its cold start - and the place
   # to look at a change before it is deployed.
@@ -46,3 +79,5 @@ services:
       # would ask the airlines for everything twice - and expose /collect on a port besides.
       COLLECTOR_ENABLED: "false"
     restart: unless-stopped
+    develop:
+      watch: *watch-sources
