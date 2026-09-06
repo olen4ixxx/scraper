@@ -54,7 +54,9 @@ jobs:
           for path in sorted(glob.glob('**/build/test-results/test/*.xml', recursive=True)):
               for case in ET.parse(path).getroot().iter('testcase'):
                   for bad in list(case.findall('failure')) + list(case.findall('error')):
-                      where = case.get('classname', '') + ' > ' + case.get('name', '')
+                      # Commas separate the properties of an annotation, so a display name
+                      # containing one would have its title cut off at the comma.
+                      where = (case.get('classname', '') + ' > ' + case.get('name', '')).replace(',', ';')
                       detail = (bad.get('message') or bad.text or '').strip().splitlines()
                       # The annotation takes one line, so it gets the assertion's own message;
                       # the rest goes to the log for whoever can read it.

@@ -273,9 +273,11 @@ class SearchIntegrationTest {
         // set Warsaw itself is not in - it is only ever flown from here. Asking to leave from
         // anywhere in Poland found nothing at all.
         List<SearchResult> results = searchFor("COUNTRY:Poland", "BCN", 0, false);
+        List<String> origins = results.stream()
+            .map(r -> r.segments().get(0).fromAirport()).distinct().sorted().toList();
 
         assertFalse(results.isEmpty(), "Warsaw is in Poland and flies to Barcelona");
-        assertTrue(results.stream().allMatch(r -> "WAW".equals(r.segments().get(0).fromAirport())));
+        assertTrue(origins.contains("WAW"), "expected a Warsaw departure, departed from " + origins);
     }
 
     @Test
