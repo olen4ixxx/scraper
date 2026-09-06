@@ -41,9 +41,7 @@ class ApiClient(private val baseUrlProvider: () -> String) {
                 form.returnRangeEnd?.let { addQueryParameter("returnRangeEnd", it) }
             }
             addQueryParameter("maxStops", form.maxStops.toString())
-            if (form.airlines.isNotEmpty()) {
-                addQueryParameter("airlines", form.airlines.joinToString(","))
-            }
+            form.airlinesParam?.let { addQueryParameter("airlines", it) }
             addQueryParameter("sortBy", form.sortBy.name)
             addQueryParameter("minConnectionMinutes", form.minConnectionMinutes.toString())
             addQueryParameter("maxConnectionMinutes", form.maxConnectionMinutes.toString())

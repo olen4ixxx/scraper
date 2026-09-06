@@ -25,6 +25,7 @@ data class Segment(
     val price: Double = 0.0,
     val currency: String = "",
     val duration: String? = null,
+    val timePublished: Boolean = true,
 )
 
 @Serializable
@@ -42,6 +43,9 @@ data class SearchResult(
     val returnDuration: String? = null,
     val returnNumberOfStops: Int = 0,
     val returnSegments: List<Segment> = emptyList(),
+    // False when an airline publishes a date and a price but no clock times. Defaults to true
+    // so a backend that predates the field is not read as publishing nothing.
+    val timesPublished: Boolean = true,
 ) {
     val isRoundTrip: Boolean get() = returnSegments.isNotEmpty()
 }
@@ -57,6 +61,21 @@ enum class SortBy(val label: String) {
 enum class ToKind { ANYWHERE, COUNTRY, CITY, AIRPORT }
 
 data class ToSelection(val label: String, val value: String, val kind: ToKind)
+
+/**
+ * Every airline the backend's enum can return, with the label the UI shows. Hardcoded because
+ * the API has no endpoint for it - but see [SearchForm.airlinesParam]: with all of them ticked
+ * the filter is left off the request entirely, so an airline added to the backend later still
+ * shows up here instead of being silently excluded.
+ */
+val AIRLINES = listOf(
+    "RYANAIR" to "Ryanair",
+    "WIZZAIR" to "Wizz Air",
+    "TRANSAVIA" to "Transavia",
+    "VUELING" to "Vueling",
+    "EASYJET" to "easyJet",
+    "VOLOTEA" to "Volotea",
+)
 
 data class OriginOption(val value: String, val label: String)
 
@@ -104,8 +123,7 @@ data class SearchForm(
     val stayMaxDays: Int? = null,
     val allowReturnToDifferentAirport: Boolean = false,
     val allowReturnFromDifferentAirport: Boolean = false,
-    val ryanair: Boolean = true,
-    val wizzair: Boolean = true,
+    val selectedAirlines: Set<String> = AIRLINES.map { it.first }.toSet(),
     val sortBy: SortBy = SortBy.CHEAPEST,
 ) {
     val minConnectionMinutes: Int get() = minConnHours * 60 + minConnMinutes
@@ -115,9 +133,15 @@ data class SearchForm(
     val maxConnectionMinutes: Int
         get() = if (maxConnDays >= 1) maxConnDays * 1440 else maxConnHours * 60 + maxConnMinutes
 
-    val airlines: List<String>
-        get() = buildList {
-            if (ryanair) add("RYANAIR")
-            if (wizzair) add("WIZZAIR")
+    /**
+     * Null when every airline is selected, so the filter is left off the request. Naming them
+     * all explicitly would exclude any airline the backend gains later, which is exactly how
+     * this client came to hide Transavia results after the backend started collecting them.
+     */
+    val airlinesParam: String?
+        get() = if (selectedAirlines.size >= AIRLINES.size) {
+            null
+        } else {
+            selectedAirlines.joinToString(",").ifBlank { null }
         }
 }

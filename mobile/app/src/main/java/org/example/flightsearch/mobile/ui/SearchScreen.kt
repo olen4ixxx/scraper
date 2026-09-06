@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.example.flightsearch.mobile.data.AIRLINES
 import org.example.flightsearch.mobile.data.Destination
 import org.example.flightsearch.mobile.data.ORIGINS
 import org.example.flightsearch.mobile.data.SearchForm
@@ -52,7 +55,7 @@ import org.example.flightsearch.mobile.data.ToSelection
 private val MAX_STOPS = listOf(0, 1, 2)
 private val TRIP_TYPES = listOf(false, true)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     form: SearchForm,
@@ -305,21 +308,24 @@ fun SearchScreen(
                 expanded = airlinesOpen,
                 onToggle = { airlinesOpen = !airlinesOpen },
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = form.ryanair,
-                        onClick = { onFormChange { it.copy(ryanair = !it.ryanair) } },
-                        label = { Text("Ryanair") },
-                    )
-                    FilterChip(
-                        selected = form.wizzair,
-                        onClick = { onFormChange { it.copy(wizzair = !it.wizzair) } },
-                        label = { Text("Wizz Air") },
-                    )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AIRLINES.forEach { (code, label) ->
+                        FilterChip(
+                            selected = code in form.selectedAirlines,
+                            onClick = {
+                                onFormChange {
+                                    val next = it.selectedAirlines.toMutableSet()
+                                    if (!next.remove(code)) next.add(code)
+                                    it.copy(selectedAirlines = next)
+                                }
+                            },
+                            label = { Text(label) },
+                        )
+                    }
                 }
-                if (form.airlines.isEmpty()) {
+                if (form.selectedAirlines.isEmpty()) {
                     Text(
-                        "With no airline selected the search covers all of them.",
+                        "With none selected the search covers every airline.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
@@ -380,9 +386,12 @@ private fun flexibilitySummary(form: SearchForm): String {
     return if (parts.isEmpty()) "Exact airports only" else parts.joinToString(", ")
 }
 
-private fun airlinesSummary(form: SearchForm): String = when {
-    form.ryanair && form.wizzair -> "Ryanair, Wizz Air"
-    form.ryanair -> "Ryanair only"
-    form.wizzair -> "Wizz Air only"
-    else -> "All airlines"
+private fun airlinesSummary(form: SearchForm): String {
+    val selected = AIRLINES.filter { it.first in form.selectedAirlines }
+    return when {
+        // Both ends mean the same request - no filter is sent either way.
+        selected.size == AIRLINES.size || selected.isEmpty() -> "All airlines"
+        selected.size <= 2 -> selected.joinToString(", ") { it.second }
+        else -> "${selected.size} of ${AIRLINES.size} airlines"
+    }
 }

@@ -1,7 +1,8 @@
 # Flight Search — Android client
 
-Native Kotlin/Compose client for the flight-search backend that runs on your PC. It talks to
-the same `/api/search` the web UI uses, so both frontends see identical results.
+Native Kotlin/Compose client for the flight-search backend. It talks to the same `/api/search`
+the web UI uses, so both frontends see identical results - pointed either at the deployed site
+or at a backend running on your own machine.
 
 This is a standalone Gradle build — the Spring `settings.gradle.kts` one directory up does not
 include it, and building the backend never builds this.
@@ -26,8 +27,22 @@ Or copy the APK to the phone and open it (Android will ask to allow installing f
 
 ## Connecting the phone to the backend
 
-The backend binds all interfaces on port 8080, so nothing needs changing on the server side —
-only the address you type into the app's settings screen changes.
+Set the address on the settings screen (gear icon). Any of these work.
+
+### The deployed site (simplest)
+
+```
+https://azair.onrender.com
+```
+
+Works from anywhere with nothing running at home, and needs no firewall rule, no Tailscale
+and no cable. It is the same instance the website serves, reading the same Neon database the
+scheduled collection writes to.
+
+Two things to know about it. It is on a free plan, so it sleeps when idle and the first
+request after a quiet spell takes a while to answer — the app's read timeout is generous
+enough to sit through that. And collection is off there (`COLLECTOR_ENABLED=false` in
+`render.yaml`), so what you see is whatever the scheduled runs have gathered.
 
 ### Same Wi-Fi
 
@@ -99,7 +114,23 @@ An emulator reaches the host machine at the special address `10.0.2.2`, so use `
 
 ## Why cleartext HTTP is allowed
 
-`res/xml/network_security_config.xml` permits cleartext only for private address ranges
-(`192.168/16`, `10/8`, `172.16/12`), Tailscale's CGNAT range (`100.64/10`), and `ts.net`.
-Everything else still requires HTTPS. The backend speaks plain HTTP and both paths to it are
-already private networks.
+`res/xml/network_security_config.xml` permits cleartext for every host. That looks lax, and
+the narrower version that came before it was simply broken: Android's `<domain>` rules accept
+hostnames and exact IPs only, so the CIDR entries it listed (`192.168.0.0/16` and friends)
+silently matched nothing and every LAN address was refused.
+
+There is no list that would work, because the server address is typed in at runtime and can be
+any private LAN address, any Tailscale address, or `localhost` behind an `adb reverse` tunnel.
+The deployed site is reached over HTTPS regardless — permitting cleartext does not weaken it.
+
+## Airlines and missing times
+
+Two details the client has to match the backend on, both learned the hard way:
+
+- **The airline filter is omitted when every airline is ticked.** Naming them all explicitly
+  would exclude any airline the backend gains later, which is exactly how this client came to
+  hide Transavia results after collection for it started.
+- **Some airlines publish a date and a price but no clock times.** Those results carry
+  `timesPublished: false`, and the app shows `--:--` and "Time n/a" rather than the placeholder
+  times in the payload. They also sort last under the time-based orders, so a zero-length
+  placeholder duration cannot sweep them to the top of "Shortest".

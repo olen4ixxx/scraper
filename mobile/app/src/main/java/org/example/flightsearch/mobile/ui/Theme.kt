@@ -95,3 +95,7 @@ fun FlightSearchTheme(content: @Composable () -> Unit) {
         content = content,
     )
 }
+
+/** For the "no times published" caveat: a warning, not an error - the itinerary is still real. */
+val WarnAmber: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color(0xFFFBBF24) else Color(0xFFB45309)

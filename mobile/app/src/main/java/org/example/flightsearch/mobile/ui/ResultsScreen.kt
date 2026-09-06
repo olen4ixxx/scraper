@@ -76,7 +76,7 @@ fun ResultsScreen(
                     title = {
                         Column {
                             Text(
-                                if (loading) "Searching…" else "${results.size} results",
+                                if (loading) "Searchingâ¦" else "${results.size} results",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -192,6 +192,7 @@ private fun ResultCard(result: SearchResult) {
                 duration = result.duration,
                 stops = result.numberOfStops,
                 segments = result.segments,
+                timesPublished = result.timesPublished,
                 expanded = expanded,
             )
 
@@ -206,6 +207,7 @@ private fun ResultCard(result: SearchResult) {
                     duration = result.returnDuration,
                     stops = result.returnNumberOfStops,
                     segments = result.returnSegments,
+                    timesPublished = result.timesPublished,
                     expanded = expanded,
                 )
             }
@@ -242,7 +244,7 @@ private fun AirlineBadge(airline: String) {
     }
 }
 
-/** One direction of travel, drawn as departure — route line — arrival. */
+/** One direction of travel, drawn as departure â route line â arrival. */
 @Composable
 private fun Leg(
     icon: Boolean,
@@ -251,6 +253,7 @@ private fun Leg(
     duration: String?,
     stops: Int,
     segments: List<Segment>,
+    timesPublished: Boolean,
     expanded: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -271,7 +274,10 @@ private fun Leg(
     Spacer(Modifier.height(6.dp))
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.Start) {
-            Text(formatTime(departure), style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (timesPublished) formatTime(departure) else "--:--",
+                style = MaterialTheme.typography.titleMedium,
+            )
             Text(
                 segments.firstOrNull()?.fromAirport.orEmpty(),
                 style = MaterialTheme.typography.labelMedium,
@@ -284,7 +290,7 @@ private fun Leg(
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         ) {
             Text(
-                formatDuration(duration),
+                if (timesPublished) formatDuration(duration) else "Time n/a",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -301,7 +307,10 @@ private fun Leg(
         }
 
         Column(horizontalAlignment = Alignment.End) {
-            Text(formatTime(arrival), style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (timesPublished) formatTime(arrival) else "--:--",
+                style = MaterialTheme.typography.titleMedium,
+            )
             Text(
                 segments.lastOrNull()?.toAirport.orEmpty(),
                 style = MaterialTheme.typography.labelMedium,
@@ -310,22 +319,35 @@ private fun Leg(
         }
     }
 
+    if (!timesPublished) {
+        Text(
+            "⚠ The airline publishes a date and a price but no times — check them before booking",
+            style = MaterialTheme.typography.labelSmall,
+            color = WarnAmber,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+
     if (expanded) {
         Spacer(Modifier.height(10.dp))
         segments.forEach { segment ->
             Column(Modifier.padding(start = 4.dp, top = 6.dp)) {
                 Text(
-                    "${segment.fromCity ?: segment.fromAirport} (${segment.fromAirport})  →  " +
+                    "${segment.fromCity ?: segment.fromAirport} (${segment.fromAirport})  â  " +
                         "${segment.toCity ?: segment.toAirport} (${segment.toAirport})",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "${formatDayTime(segment.departure)} – ${formatDayTime(segment.arrival)}",
+                    if (segment.timePublished) {
+                        "${formatDayTime(segment.departure)} - ${formatDayTime(segment.arrival)}"
+                    } else {
+                        "${formatDay(segment.departure)} - time not published"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "${segment.airline.lowercase().replaceFirstChar(Char::uppercase)} · " +
+                    "${segment.airline.lowercase().replaceFirstChar(Char::uppercase)} Â· " +
                         formatPrice(segment.price, segment.currency),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -335,7 +357,7 @@ private fun Leg(
     }
 }
 
-/** Dot — line — dot, with an extra dot per stop, so stop count is readable at a glance. */
+/** Dot â line â dot, with an extra dot per stop, so stop count is readable at a glance. */
 @Composable
 private fun RouteLine(stops: Int) {
     Row(
@@ -371,13 +393,21 @@ private fun Bar(modifier: Modifier) {
     )
 }
 
-private fun sortResults(results: List<SearchResult>, sortBy: SortBy): List<SearchResult> =
-    when (sortBy) {
-        SortBy.CHEAPEST -> results.sortedBy { it.totalPrice }
-        SortBy.SHORTEST -> results.sortedBy {
+/**
+ * Itineraries whose times were never published sort last under any time-based order rather
+ * than competing on a placeholder: their "duration" is a zero-length gap between two invented
+ * clock times, which would otherwise sweep them to the top of "Shortest".
+ */
+private fun sortResults(results: List<SearchResult>, sortBy: SortBy): List<SearchResult> {
+    val (timed, untimed) = results.partition { it.timesPublished }
+    val ordered = when (sortBy) {
+        SortBy.CHEAPEST -> return results.sortedBy { it.totalPrice }
+        SortBy.FEWEST_STOPS -> return results.sortedBy { it.numberOfStops + it.returnNumberOfStops }
+        SortBy.SHORTEST -> timed.sortedBy {
             durationMinutes(it.duration) + if (it.isRoundTrip) durationMinutes(it.returnDuration) else 0
         }
-        SortBy.EARLIEST_DEPARTURE -> results.sortedBy { parseDateTime(it.departure) }
-        SortBy.LATEST_DEPARTURE -> results.sortedByDescending { parseDateTime(it.departure) }
-        SortBy.FEWEST_STOPS -> results.sortedBy { it.numberOfStops + it.returnNumberOfStops }
+        SortBy.EARLIEST_DEPARTURE -> timed.sortedBy { parseDateTime(it.departure) }
+        SortBy.LATEST_DEPARTURE -> timed.sortedByDescending { parseDateTime(it.departure) }
     }
+    return ordered + untimed.sortedBy { it.totalPrice }
+}

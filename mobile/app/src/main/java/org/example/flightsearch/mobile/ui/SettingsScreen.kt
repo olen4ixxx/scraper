@@ -39,7 +39,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
         ) {
             Text(
-                "Address of the flight-search backend running on your PC.",
+                "Which flight-search backend to use.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(12.dp))
@@ -48,17 +48,19 @@ fun SettingsScreen(
                 value = url,
                 onValueChange = { url = it },
                 label = { Text("Server address") },
-                placeholder = { Text("192.168.1.20:8080") },
+                placeholder = { Text("azair.onrender.com") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(Modifier.height(12.dp))
             Text(
-                "Same Wi-Fi: your PC's local IP and port, e.g. 192.168.1.20:8080 " +
-                    "(run ipconfig on the PC to find it).\n\n" +
-                    "Anywhere over the internet: the Tailscale address of your PC, " +
-                    "e.g. 100.101.102.103:8080 or my-pc.tailnet-name.ts.net:8080.",
+                "Deployed site: https://azair.onrender.com - works anywhere, with nothing " +
+                    "running at home. It sleeps when idle, so the first search after a " +
+                    "while is slow.\n\n" +
+                    "Your PC on the same Wi-Fi: its local IP and port, e.g. " +
+                    "192.168.1.20:8080 (run ipconfig to find it).\n\n" +
+                    "Your PC from anywhere: its Tailscale address, e.g. 100.101.102.103:8080.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
