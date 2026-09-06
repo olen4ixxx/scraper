@@ -130,10 +130,15 @@
             show(best);
         }
 
-        svg.addEventListener('pointermove', nearest);
         svg.addEventListener('pointerdown', nearest);
-        svg.addEventListener('pointerleave', hide);
-        // A tap elsewhere puts it away on touch, where there is no pointerleave to rely on.
+        svg.addEventListener('pointermove', nearest);
+        // A mouse leaving the chart has finished reading it. A finger lifting has not - but the
+        // browser fires pointerleave the instant a touch ends, so the price appeared and went
+        // again in the same tap, which is what this used to do on a phone. On touch the price
+        // stays up until you touch something else.
+        svg.addEventListener('pointerleave', function(event) {
+            if (event.pointerType === 'mouse') { hide(); }
+        });
         document.addEventListener('pointerdown', function(event) {
             if (!chart.contains(event.target)) { hide(); }
         });

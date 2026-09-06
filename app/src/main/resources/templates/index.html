@@ -545,40 +545,33 @@
         <h1>✈ Flight Search</h1>
         
         <form action="/results" method="post">
-            <div class="form-group">
+            <!-- The same field twice. Both sides take any airport we hold flights for, so
+                 looking for the way home is picking the places the other way round rather than
+                 pressing a Swap button and hoping it meant what you thought. -->
+            <div class="form-group combo-wrapper" id="fromField">
                 <div class="label-row">
-                    <label for="from">From</label>
-                    <button type="button" id="swapFromTo" class="clear-all-btn" title="Swap From and To">⇄ Swap</button>
+                    <label for="fromSearch">From</label>
+                    <button type="button" data-role="clear-all" class="clear-all-btn" style="display:none;">Clear all</button>
                 </div>
-                <select id="from" name="from" required>
-                    <option value="POLAND">Poland (all airports)</option>
-                    <optgroup label="Poland">
-                        <option value="WARSAW">Warsaw (WAW + WMI)</option>
-                        <option value="WAW">Warsaw Chopin (WAW)</option>
-                        <option value="WMI">Warsaw Modlin (WMI)</option>
-                        <option value="KRK">Krakow (KRK)</option>
-                        <option value="GDN">Gdansk (GDN)</option>
-                        <option value="WRO">Wroclaw (WRO)</option>
-                        <option value="POZ">Poznan (POZ)</option>
-                        <option value="KTW">Katowice (KTW)</option>
-                        <option value="RZE">Rzeszow (RZE)</option>
-                        <option value="LUZ">Lublin (LUZ)</option>
-                        <option value="SZZ">Szczecin (SZZ)</option>
-                        <option value="BZG">Bydgoszcz (BZG)</option>
-                    </optgroup>
-                </select>
+                <div class="chips" data-role="chips"></div>
+                <div class="nearby-panel" data-role="nearby" style="display:none;"></div>
+                <input type="text" id="fromSearch" data-role="search" autocomplete="off"
+                       placeholder="Add city, airport code or country...">
+                <input type="hidden" id="from" name="from" data-role="hidden" required>
+                <div class="suggestions" data-role="suggestions"></div>
             </div>
-            
-            <div class="form-group combo-wrapper">
+
+            <div class="form-group combo-wrapper" id="toField">
                 <div class="label-row">
                     <label for="toSearch">To</label>
-                    <button type="button" id="toClearAll" class="clear-all-btn" style="display:none;">Clear all</button>
+                    <button type="button" data-role="clear-all" class="clear-all-btn" style="display:none;">Clear all</button>
                 </div>
-                <div class="chips" id="toChips"></div>
-                <div class="nearby-panel" id="nearbyPanel" style="display:none;"></div>
-                <input type="text" id="toSearch" autocomplete="off" placeholder="Add city, airport code or country...">
-                <input type="hidden" id="to" name="to" required>
-                <div id="toSuggestions" class="suggestions"></div>
+                <div class="chips" data-role="chips"></div>
+                <div class="nearby-panel" data-role="nearby" style="display:none;"></div>
+                <input type="text" id="toSearch" data-role="search" autocomplete="off"
+                       placeholder="Add city, airport code or country...">
+                <input type="hidden" id="to" name="to" data-role="hidden" required>
+                <div class="suggestions" data-role="suggestions"></div>
             </div>
             
             <!-- One field per direction rather than a start box and an end box: picking a
@@ -736,9 +729,10 @@
         </form>
     </div>
     
+    <script src="/js/airportpicker.js"></script>
     <script src="/js/daterange.js"></script>
     <script th:inline="javascript">
-        const DESTINATIONS = /*[[${destinations}]]*/ [];
+        const AIRPORTS = /*[[${airports}]]*/ [];
         const PREFILL = {
             from: /*[[${prefillFrom}]]*/ null,
             to: /*[[${prefillTo}]]*/ null,
@@ -768,343 +762,44 @@
     </script>
     <script>
     (function() {
-        const searchInput = document.getElementById('toSearch');
-        const hiddenInput = document.getElementById('to');
-        const suggestionsBox = document.getElementById('toSuggestions');
-        const chipsBox = document.getElementById('toChips');
-        const nearbyPanel = document.getElementById('nearbyPanel');
-        const clearAllBtn = document.getElementById('toClearAll');
-
-        const byCountry = {};
-        DESTINATIONS.forEach(function(a) {
-            if (!byCountry[a.country]) byCountry[a.country] = [];
-            byCountry[a.country].push(a);
+        // Both fields are the same widget, from /js/airportpicker.js. "Anywhere" is offered
+        // only as a destination: there is no set of airports to depart from that it could mean.
+        const fromPicker = createAirportPicker({
+            rootId: 'fromField',
+            airports: AIRPORTS,
+            allowAnywhere: false
         });
-        const countries = Object.keys(byCountry).sort();
-
-        let selected = [];
-        let nearbyOpenFor = null;
-
-        function haversineKm(lat1, lon1, lat2, lon2) {
-            const r = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
-                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        }
-
-        function hideNearbyPanel() {
-            nearbyOpenFor = null;
-            nearbyPanel.style.display = 'none';
-            nearbyPanel.innerHTML = '';
-        }
-
-        function showNearby(iata) {
-            const target = DESTINATIONS.find(function(a) { return a.iata === iata; });
-            if (!target) return;
-
-            const selectedValues = selected.map(function(s) { return s.value; });
-            const nearby = DESTINATIONS
-                .filter(function(a) { return a.iata !== iata && selectedValues.indexOf(a.iata) === -1; })
-                .map(function(a) { return { airport: a, distance: haversineKm(target.lat, target.lon, a.lat, a.lon) }; })
-                .sort(function(x, y) { return x.distance - y.distance; })
-                .slice(0, 10);
-
-            nearbyPanel.innerHTML = '';
-            const title = document.createElement('div');
-            title.className = 'nearby-panel-title';
-            title.textContent = 'Airports near ' + target.city + ', in order of distance';
-            nearbyPanel.appendChild(title);
-
-            if (nearby.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'nearby-empty';
-                empty.textContent = 'No other collected airports nearby';
-                nearbyPanel.appendChild(empty);
-            } else {
-                nearby.forEach(function(n) {
-                    const item = document.createElement('div');
-                    item.className = 'nearby-item';
-
-                    const label = document.createElement('span');
-                    label.textContent = n.airport.city + ' (' + n.airport.iata + ')';
-
-                    const dist = document.createElement('span');
-                    dist.className = 'distance';
-                    dist.textContent = Math.round(n.distance) + ' km';
-
-                    item.appendChild(label);
-                    item.appendChild(dist);
-                    item.addEventListener('click', function() {
-                        addSelection(n.airport.city + ' (' + n.airport.iata + ')', n.airport.iata, 'airport');
-                        showNearby(iata);
-                    });
-                    nearbyPanel.appendChild(item);
-                });
-            }
-
-            nearbyPanel.style.display = 'block';
-            nearbyOpenFor = iata;
-        }
-
-        function toggleNearby(iata) {
-            if (nearbyOpenFor === iata) {
-                hideNearbyPanel();
-            } else {
-                showNearby(iata);
-            }
-        }
-
-        function renderChips() {
-            chipsBox.innerHTML = '';
-            selected.forEach(function(s) {
-                const chip = document.createElement('div');
-                chip.className = 'chip';
-
-                const label = document.createElement('span');
-                label.className = 'chip-label';
-                label.textContent = s.label;
-                chip.appendChild(label);
-
-                if (s.kind === 'airport') {
-                    const nearbyBtn = document.createElement('button');
-                    nearbyBtn.type = 'button';
-                    nearbyBtn.className = 'chip-nearby-btn';
-                    nearbyBtn.textContent = '+';
-                    nearbyBtn.title = 'Show nearby airports';
-                    nearbyBtn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        toggleNearby(s.value);
-                    });
-                    chip.appendChild(nearbyBtn);
-                } else if (s.kind === 'country' || s.kind === 'city') {
-                    const addMoreBtn = document.createElement('button');
-                    addMoreBtn.type = 'button';
-                    addMoreBtn.className = 'chip-nearby-btn';
-                    addMoreBtn.textContent = '+';
-                    addMoreBtn.title = 'Add another airport or country';
-                    addMoreBtn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        hideNearbyPanel();
-                        searchInput.focus();
-                        render(searchInput.value);
-                    });
-                    chip.appendChild(addMoreBtn);
-                }
-
-                const removeBtn = document.createElement('button');
-                removeBtn.type = 'button';
-                removeBtn.className = 'chip-remove';
-                removeBtn.textContent = '×';
-                removeBtn.title = 'Remove';
-                removeBtn.addEventListener('click', function() {
-                    removeSelection(s.value);
-                });
-                chip.appendChild(removeBtn);
-
-                chipsBox.appendChild(chip);
-            });
-
-            hiddenInput.value = selected.map(function(s) { return s.value; }).join(',');
-            clearAllBtn.style.display = selected.length > 0 ? 'inline' : 'none';
-        }
-
-        function addSelection(label, value, kind) {
-            if (kind === 'anywhere') {
-                selected = [{ label: label, value: value, kind: kind }];
-            } else {
-                selected = selected.filter(function(s) { return s.kind !== 'anywhere' && s.value !== value; });
-                selected.push({ label: label, value: value, kind: kind });
-            }
-            searchInput.value = '';
-            suggestionsBox.classList.remove('open');
-            hideNearbyPanel();
-            renderChips();
-        }
-
-        function removeSelection(value) {
-            selected = selected.filter(function(s) { return s.value !== value; });
-            hideNearbyPanel();
-            renderChips();
-        }
-
-        function addSuggestionItem(label, value, kind, className) {
-            const item = document.createElement('div');
-            item.className = 'suggestion-item' + (className ? ' ' + className : '');
-            item.textContent = label;
-            item.addEventListener('mousedown', function(e) {
-                e.preventDefault();
-                addSelection(label, value, kind);
-            });
-            suggestionsBox.appendChild(item);
-        }
-
-        function render(filter) {
-            const q = (filter || '').trim().toLowerCase();
-            suggestionsBox.innerHTML = '';
-            let anyMatch = false;
-
-            if (!q || 'anywhere'.indexOf(q) !== -1) {
-                addSuggestionItem('Anywhere', 'ANYWHERE', 'anywhere', 'suggestion-anywhere');
-                anyMatch = true;
-            }
-
-            countries.forEach(function(country) {
-                const airports = byCountry[country];
-                const countryMatches = country.toLowerCase().indexOf(q) !== -1;
-                const matchingAirports = airports.filter(function(a) {
-                    return countryMatches
-                        || a.city.toLowerCase().indexOf(q) !== -1
-                        || a.iata.toLowerCase().indexOf(q) !== -1
-                        || a.name.toLowerCase().indexOf(q) !== -1;
-                });
-
-                if (q && !countryMatches && matchingAirports.length === 0) {
-                    return;
-                }
-
-                const byCity = {};
-                airports.forEach(function(a) {
-                    if (!byCity[a.city]) byCity[a.city] = [];
-                    byCity[a.city].push(a);
-                });
-                const cityNames = Object.keys(byCity).sort();
-
-                let countryHeaderAdded = false;
-                cityNames.forEach(function(cityName) {
-                    const cityAirports = byCity[cityName];
-                    const cityMatches = countryMatches || cityName.toLowerCase().indexOf(q) !== -1;
-                    const shownAirports = cityAirports.filter(function(a) {
-                        return cityMatches
-                            || a.iata.toLowerCase().indexOf(q) !== -1
-                            || a.name.toLowerCase().indexOf(q) !== -1;
-                    });
-                    if (shownAirports.length === 0) return;
-
-                    if (!countryHeaderAdded) {
-                        anyMatch = true;
-                        addSuggestionItem('🌍 All of ' + country + ' (' + airports.length + ')', 'COUNTRY:' + country, 'country', 'suggestion-country');
-                        countryHeaderAdded = true;
-                    }
-
-                    if (cityAirports.length > 1) {
-                        addSuggestionItem(cityName + ' (All ' + cityAirports.length + ')', 'CITY:' + cityName, 'city', 'suggestion-city');
-                    }
-                    shownAirports.forEach(function(a) {
-                        addSuggestionItem(a.city + ' (' + a.iata + ')', a.iata, 'airport', 'suggestion-airport');
-                    });
-                });
-            });
-
-            if (!anyMatch) {
-                const empty = document.createElement('div');
-                empty.className = 'suggestion-empty';
-                empty.textContent = 'No matches';
-                suggestionsBox.appendChild(empty);
-            }
-
-            suggestionsBox.classList.add('open');
-        }
-
-        searchInput.addEventListener('focus', function() {
-            render(searchInput.value);
-        });
-        searchInput.addEventListener('input', function() {
-            render(searchInput.value);
-        });
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.combo-wrapper')) {
-                suggestionsBox.classList.remove('open');
-                hideNearbyPanel();
-            }
+        const toPicker = createAirportPicker({
+            rootId: 'toField',
+            airports: AIRPORTS,
+            allowAnywhere: true
         });
 
-        document.querySelector('form').addEventListener('submit', function(e) {
-            if (!hiddenInput.value) {
-                e.preventDefault();
-                searchInput.style.borderColor = '#e53935';
-                searchInput.focus();
-                render(searchInput.value);
-            }
-        });
-
-        clearAllBtn.addEventListener('click', function() {
-            selected = [];
-            hideNearbyPanel();
-            suggestionsBox.classList.remove('open');
-            renderChips();
-            searchInput.focus();
-        });
-
-        function tokenToSelection(token) {
-            const upper = token.toUpperCase();
-            if (upper === 'ANYWHERE') {
-                return { label: 'Anywhere', value: 'ANYWHERE', kind: 'anywhere' };
-            }
-            if (upper.indexOf('COUNTRY:') === 0) {
-                const name = token.substring(8);
-                return { label: '🌍 All of ' + name, value: 'COUNTRY:' + name, kind: 'country' };
-            }
-            if (upper.indexOf('CITY:') === 0) {
-                const name = token.substring(5);
-                return { label: name + ' (All)', value: 'CITY:' + name, kind: 'city' };
-            }
-            // The two shorthands the "From" list offers - they mean the same on either side of
-            // a search, so they survive a swap instead of turning into unreadable chips.
-            if (upper === 'POLAND') {
-                return { label: '🌍 Poland (all airports)', value: 'POLAND', kind: 'country' };
-            }
-            if (upper === 'WARSAW') {
-                return { label: 'Warsaw (WAW + WMI)', value: 'WARSAW', kind: 'city' };
-            }
-            const airport = DESTINATIONS.find(function(a) { return a.iata === upper; });
-            return {
-                label: airport ? (airport.city + ' (' + airport.iata + ')') : upper,
-                value: upper,
-                kind: 'airport'
-            };
-        }
-
-        // Seed "To" from the previous search (arriving via "Back to search") if present,
-        // otherwise default to "Anywhere" like the old select's default first option did.
-        if (PREFILL.to) {
-            selected = PREFILL.to.split(',').map(function(t) { return t.trim(); })
-                .filter(function(t) { return t; })
-                .map(tokenToSelection);
-        }
-        if (selected.length === 0) {
-            selected = [{ label: 'Anywhere', value: 'ANYWHERE', kind: 'anywhere' }];
-        }
-        renderChips();
+        // Seeded from the previous search when arriving through "Back to search", and otherwise
+        // from where most of the data is: leaving Poland, arriving anywhere. Those two are only
+        // the starting point now - either side will take Milan just as readily.
+        fromPicker.set(PREFILL.from);
+        fromPicker.setDefault('POLAND');
+        toPicker.set(PREFILL.to);
+        toPicker.setDefault('ANYWHERE');
 
         // Repopulate the rest of the form from the previous search, if any. The date fields
         // are handled by the range pickers set up at the end of this block.
-        const fromEl = document.getElementById('from');
         const maxStopsEl = document.getElementById('maxStops');
         const sortByEl = document.getElementById('sortBy');
         const airlineEls = Array.prototype.slice.call(document.querySelectorAll('.airline-checkbox'));
 
-        // "From" is a fixed list of Polish airports, but the search itself accepts any
-        // comma-separated set of places on either side - so anything the list doesn't already
-        // offer (whatever was swapped in from "To", or carried back by "Back to search") gets
-        // its own option rather than being silently dropped.
-        function setFrom(value, label) {
-            const existing = Array.prototype.find.call(fromEl.options, function(o) { return o.value === value; });
-            if (!existing) {
-                const custom = document.getElementById('fromCustomOption') || document.createElement('option');
-                custom.id = 'fromCustomOption';
-                custom.value = value;
-                custom.textContent = label || value;
-                if (!custom.parentNode) fromEl.insertBefore(custom, fromEl.firstChild);
+        // Neither side may be left empty: a search with no origin is not a narrower search, it
+        // is one the server cannot answer.
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const missing = fromPicker.isEmpty() ? fromPicker : (toPicker.isEmpty() ? toPicker : null);
+            if (missing) {
+                e.preventDefault();
+                missing.markInvalid();
+                missing.focus();
             }
-            fromEl.value = value;
-        }
+        });
 
-        if (PREFILL.from) setFrom(PREFILL.from, PREFILL.from.split(',').map(function(t) {
-            return tokenToSelection(t.trim()).label;
-        }).join(', '));
         if (PREFILL.maxStops !== null && PREFILL.maxStops !== undefined) maxStopsEl.value = String(PREFILL.maxStops);
         if (PREFILL.sortBy) sortByEl.value = PREFILL.sortBy;
         if (PREFILL.airlines) {
@@ -1204,32 +899,6 @@
                 const maxM = parseInt(maxConnMinutesEl.value, 10) || 0;
                 maxConnectionMinutesHiddenEl.value = maxH * 60 + maxM;
             }
-        });
-
-        // Swaps the two sides of the search, which is the quick way to look for the journey
-        // home ("from anywhere in Italy back to Poland") instead of the journey out.
-        document.getElementById('swapFromTo').addEventListener('click', function() {
-            if (selected.length === 0) {
-                searchInput.focus();
-                return;
-            }
-            if (selected.some(function(s) { return s.kind === 'anywhere'; })) {
-                // "Anywhere" only means something as a destination - there's no set of airports
-                // to depart from that it could turn into.
-                alert('"Anywhere" can only be a destination, so this search can\'t be reversed.');
-                return;
-            }
-
-            const newFromValue = selected.map(function(s) { return s.value; }).join(',');
-            const newFromLabel = selected.map(function(s) { return s.label; }).join(', ');
-            const oldFrom = fromEl.value;
-
-            selected = oldFrom.split(',').map(function(t) { return t.trim(); })
-                .filter(function(t) { return t; })
-                .map(tokenToSelection);
-            renderChips();
-
-            setFrom(newFromValue, newFromLabel);
         });
 
         // The date-range widget lives in /js/daterange.js, loaded above - see the note there

@@ -61,7 +61,7 @@ public class WebController {
      */
     @GetMapping("/")
     public String index(@RequestParam(name = "s", required = false) String search, Model model) {
-        model.addAttribute("destinations", formOptions.destinations());
+        model.addAttribute("airports", formOptions.airports());
         model.addAttribute("availableAirlines", formOptions.airlines());
 
         Optional<SearchRequest> previous = search == null ? Optional.empty() : savedSearches.find(search);

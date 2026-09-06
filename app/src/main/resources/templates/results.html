@@ -309,8 +309,10 @@
 
         .price-history-chart svg {
             display: block;
-            /* Reading a value is a tap, and a tap must not stop the page scrolling under it -
-               so no touch-action override here. */
+            /* A finger dragging sideways along the line reads the prices off it; a finger
+               dragging up or down is scrolling the page and still does. Without this the
+               browser claims both directions and the chart never sees the drag. */
+            touch-action: pan-y;
             cursor: crosshair;
         }
 

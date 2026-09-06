@@ -419,8 +419,9 @@ public class FlightSearchServiceImpl implements FlightSearchService {
     /**
      * Turns either side of a search into the set of airports it covers. Both sides carry the
      * same comma-separated tokens - an airport code, "COUNTRY:x" / "CITY:x" for a whole country
-     * or multi-airport city, or the "POLAND" / "WARSAW" shorthands - because the two sides can
-     * be swapped, and a country that reads as a destination has to read as an origin too.
+     * or multi-airport city, or the "POLAND" / "WARSAW" shorthands - because the two sides are
+     * the same kind of thing, and a country that reads as a destination has to read as an
+     * origin too.
      */
     private Set<String> resolveAirports(String places) {
         List<String> tokens = new ArrayList<>();
@@ -432,10 +433,10 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         }
 
         // Loaded at most once per search, and only when a COUNTRY:/CITY: token actually needs
-        // it - a search with several such chips used to re-query the whole destination list once
+        // it - a search with several such chips used to re-query the whole airport list once
         // per chip.
-        List<AirportEntity> destinations = tokens.stream().anyMatch(this::needsDestinationList)
-            ? reachableDestinations()
+        List<AirportEntity> known = tokens.stream().anyMatch(this::needsAirportList)
+            ? airportsWithFlights()
             : List.of();
 
         Set<String> result = new HashSet<>();
@@ -446,10 +447,10 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                 result.addAll(PolandAirports.ALL);
             } else if (token.regionMatches(true, 0, COUNTRY_PREFIX, 0, COUNTRY_PREFIX.length())) {
                 String country = token.substring(COUNTRY_PREFIX.length());
-                result.addAll(matching(destinations, a -> a.country().equalsIgnoreCase(country)));
+                result.addAll(matching(known, a -> a.country().equalsIgnoreCase(country)));
             } else if (token.regionMatches(true, 0, CITY_PREFIX, 0, CITY_PREFIX.length())) {
                 String city = token.substring(CITY_PREFIX.length());
-                result.addAll(matching(destinations, a -> a.city().equalsIgnoreCase(city)));
+                result.addAll(matching(known, a -> a.city().equalsIgnoreCase(city)));
             } else {
                 result.add(token.toUpperCase());
             }
@@ -457,19 +458,25 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         return result;
     }
 
-    private boolean needsDestinationList(String token) {
+    private boolean needsAirportList(String token) {
         return token.regionMatches(true, 0, COUNTRY_PREFIX, 0, COUNTRY_PREFIX.length())
             || token.regionMatches(true, 0, CITY_PREFIX, 0, CITY_PREFIX.length());
     }
 
-    private List<AirportEntity> reachableDestinations() {
-        List<AirportEntity> destinations = new ArrayList<>();
-        airportRepository.findDestinationsFrom(PolandAirports.ALL).forEach(destinations::add);
-        return destinations;
+    /**
+     * Every airport we hold flights for, not only the ones Poland reaches. "All of Spain" as an
+     * origin used to mean "the Spanish airports you can fly to from Poland", which is a different
+     * set and a surprising one - a Spanish airport served only from Italy was quietly left out of
+     * a search that named its country.
+     */
+    private List<AirportEntity> airportsWithFlights() {
+        List<AirportEntity> known = new ArrayList<>();
+        airportRepository.findAirportsWithFlights().forEach(known::add);
+        return known;
     }
 
-    private Set<String> matching(List<AirportEntity> destinations, Predicate<AirportEntity> filter) {
-        return destinations.stream()
+    private Set<String> matching(List<AirportEntity> airports, Predicate<AirportEntity> filter) {
+        return airports.stream()
             .filter(filter)
             .map(AirportEntity::iata)
             .collect(Collectors.toSet());
