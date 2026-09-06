@@ -158,6 +158,9 @@ function createAirportPicker(options) {
 
         hiddenInput.value = selected.map(function(s) { return s.value; }).join(',');
         clearAllBtn.style.display = selected.length > 0 ? 'inline' : 'none';
+        if (options.onChange) {
+            options.onChange();
+        }
     }
 
     function addSelection(label, value, kind) {
@@ -329,22 +332,28 @@ function createAirportPicker(options) {
     }
 
     return {
-        /** Fills the field from a comma-separated list of tokens; empty leaves it untouched. */
+        /**
+         * Replaces what is in the field with a comma-separated list of tokens. Empty empties it,
+         * which is what makes a swap with an empty other side work rather than duplicate.
+         */
         set: function(tokens) {
-            if (!tokens) return false;
-            const parsed = tokens.split(',')
+            selected = (tokens || '').split(',')
                 .map(function(t) { return t.trim(); })
                 .filter(function(t) { return t; })
                 .map(tokenToSelection);
-            if (parsed.length === 0) return false;
-            selected = parsed;
             renderChips();
-            return true;
+            return selected.length > 0;
         },
         setDefault: function(tokens) {
             if (selected.length === 0) {
                 this.set(tokens);
             }
+        },
+        /** What would be submitted - the same string the other side can be handed. */
+        tokens: function() { return hiddenInput.value; },
+        /** Whether one of the chips is a thing only a destination can be. */
+        hasAnywhere: function() {
+            return selected.some(function(s) { return s.kind === 'anywhere'; });
         },
         isEmpty: function() { return selected.length === 0; },
         focus: function() {

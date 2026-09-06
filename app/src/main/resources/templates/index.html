@@ -538,6 +538,36 @@
             color: #999;
             font-size: 13px;
         }
+
+        /* Small, and off to one side between the two fields. Reversing a search is a shortcut
+           worth having - looking for the way home is a couple of taps, not a retype - but it is
+           not how you say where you are going, which is what it used to be when "From" could
+           only be filled by swapping something into it. */
+        .swap-row {
+            display: flex;
+            justify-content: flex-end;
+            margin: -12px 0 8px;
+        }
+
+        .swap-btn {
+            background: #eef0fd;
+            border: none;
+            border-radius: 20px;
+            color: #667eea;
+            font-size: 13px;
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        .swap-btn:hover:not(:disabled) {
+            background: #dfe3fb;
+        }
+
+        .swap-btn:disabled {
+            background: #f3f3f3;
+            color: #bbb;
+            cursor: default;
+        }
     </style>
 </head>
 <body>
@@ -559,6 +589,10 @@
                        placeholder="Add city, airport code or country...">
                 <input type="hidden" id="from" name="from" data-role="hidden" required>
                 <div class="suggestions" data-role="suggestions"></div>
+            </div>
+
+            <div class="swap-row">
+                <button type="button" id="swapPlaces" class="swap-btn" title="Swap From and To">⇄ Swap</button>
             </div>
 
             <div class="form-group combo-wrapper" id="toField">
@@ -764,15 +798,37 @@
     (function() {
         // Both fields are the same widget, from /js/airportpicker.js. "Anywhere" is offered
         // only as a destination: there is no set of airports to depart from that it could mean.
+        const swapBtn = document.getElementById('swapPlaces');
         const fromPicker = createAirportPicker({
             rootId: 'fromField',
             airports: AIRPORTS,
-            allowAnywhere: false
+            allowAnywhere: false,
+            onChange: function() { refreshSwap(); }
         });
         const toPicker = createAirportPicker({
             rootId: 'toField',
             airports: AIRPORTS,
-            allowAnywhere: true
+            allowAnywhere: true,
+            onChange: function() { refreshSwap(); }
+        });
+
+        // A shortcut, not the way to fill the fields in: both sides take any airport now, so
+        // this only saves retyping the trip you just described in order to look at the way home.
+        // The one search it cannot reverse is one going Anywhere - there is no set of airports
+        // to depart from that "Anywhere" could turn into - and rather than explain that in an
+        // alert after the fact, the button says so before you press it.
+        function refreshSwap() {
+            const reversible = !toPicker.hasAnywhere();
+            swapBtn.disabled = !reversible;
+            swapBtn.title = reversible
+                ? 'Swap From and To'
+                : '"Anywhere" can only be a destination, so this search has no reverse';
+        }
+
+        swapBtn.addEventListener('click', function() {
+            const wasFrom = fromPicker.tokens();
+            fromPicker.set(toPicker.tokens());
+            toPicker.set(wasFrom);
         });
 
         // Seeded from the previous search when arriving through "Back to search", and otherwise
