@@ -110,6 +110,14 @@ public class FlightSearchServiceImpl implements FlightSearchService {
      * small enough (tens of thousands / hundreds of rows) to load in full up front instead.
      */
     private record SearchContext(Map<Long, RouteEntity> routesById, Map<String, AirportEntity> airportsByIata) {
+        /**
+         * Whether this flight can be described at all. The route carries the airline and both
+         * airport codes, so a flight whose route is missing here has no name for anything.
+         */
+        boolean knows(Long routeId) {
+            return routesById.containsKey(routeId);
+        }
+
         String fromAirport(Long routeId) {
             RouteEntity route = routesById.get(routeId);
             return route != null ? route.fromAirport() : "UNKNOWN";
@@ -146,7 +154,8 @@ public class FlightSearchServiceImpl implements FlightSearchService {
 
     private SearchContext context() {
         CachedContext current = cachedContext;
-        if (current != null && Duration.between(current.builtAt(), Instant.now()).compareTo(CONTEXT_TTL) < 0) {
+        if (current != null && Duration.between(current.builtAt(), Instant.now()).compareTo(CONTEXT_TTL) < 0
+            && stillDescribesTheTables(current.context())) {
             return current.context();
         }
         // Two searches arriving together may both rebuild; they produce the same thing, and
@@ -154,6 +163,26 @@ public class FlightSearchServiceImpl implements FlightSearchService {
         SearchContext rebuilt = buildContext();
         cachedContext = new CachedContext(rebuilt, Instant.now());
         return rebuilt;
+    }
+
+    /**
+     * Whether the cached maps still describe the tables they were built from.
+     *
+     * <p>The time limit alone was not enough, because the thing that changes these tables is not
+     * this process. Collection runs elsewhere against the same database - a scheduled job in the
+     * cloud, a container on a desk - and a route it wrote was invisible here for up to five
+     * minutes afterwards. Its flights were found by the search, because that happens in SQL, and
+     * then came out described as departing "UNKNOWN": the route is what carries the airline and
+     * both airport codes, so a missing one leaves nothing to print.
+     *
+     * <p>Two counts over tables of hundreds and thousands of rows, against the several hundred
+     * milliseconds a rebuild costs. It is not a perfect detector of change - a delete and an
+     * insert between two searches cancel out - but collection only ever adds, and the time limit
+     * still catches everything else.
+     */
+    private boolean stillDescribesTheTables(SearchContext ctx) {
+        return ctx.routesById().size() == routeRepository.count()
+            && ctx.airportsByIata().size() == airportRepository.count();
     }
 
     private SearchContext buildContext() {
@@ -234,7 +263,14 @@ public class FlightSearchServiceImpl implements FlightSearchService {
                 ? flightRepository.findFlightsFromAnyDestinationFromAirports(fromAirports, start, end)
                 : flightRepository.findDirectFlightsBetweenAirports(fromAirports, toAirports, start, end));
             for (FlightWithPrice flight : filterByAirlines(directFlights, request.airlines(), ctx)) {
-                results.add(createSearchResult(flight, ctx));
+                // The check above closes the window this guards, but not the instant inside a
+                // single search where collection commits a route between the count and the
+                // query. A flight nothing can name is not offered: "UNKNOWN to UNKNOWN" is not
+                // an itinerary, and it used to sort in among the real ones. The connection paths
+                // already drop these, by needing a connection airport they cannot produce.
+                if (ctx.knows(flight.routeId())) {
+                    results.add(createSearchResult(flight, ctx));
+                }
             }
         }
 

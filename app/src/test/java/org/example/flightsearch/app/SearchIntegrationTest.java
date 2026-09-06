@@ -293,6 +293,32 @@ class SearchIntegrationTest {
     }
 
     @Test
+    @DisplayName("a route collected since the last search is named, not called UNKNOWN")
+    void seesRoutesAddedSinceTheLastSearch() {
+        seedOnce();
+        // The search holds the route and airport tables in memory and used to reload them only
+        // every five minutes. Collection runs in another process against the same database, so
+        // this is the ordinary state of things, not a contrived one: search, then a route
+        // arrives. Its flights were found - that part is SQL - and then described from a map
+        // that had never heard of the route, which is where "UNKNOWN" came from.
+        // A pair nothing else in this class asserts on, so the route added here stays this
+        // test's business.
+        searchFor("BUD", "AGP", 0, false);
+
+        long justCollected = route("RYANAIR", "BUD", "AGP", true);
+        flight(justCollected, "FR4242", 10, 13, 59.0, "EUR");
+
+        List<SearchResult> results = searchFor("BUD", "AGP", 0, false);
+
+        assertFalse(results.isEmpty(), "the flight is in the table and its route names it");
+        assertTrue(results.stream().anyMatch(r -> r.airlines().contains("RYANAIR")),
+            "the flight on the new route should be offered at all");
+        assertTrue(results.stream().noneMatch(r -> r.airlines().contains("UNKNOWN")
+                || "UNKNOWN".equals(r.segments().get(0).fromAirport())),
+            "nothing should reach a page unable to say which airline flies it or from where");
+    }
+
+    @Test
     @DisplayName("a connection is found, and counted as one stop")
     void findsConnections() {
         List<SearchResult> results = searchFor("WAW", "BCN", 1, false);
